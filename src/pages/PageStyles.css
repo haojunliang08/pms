@@ -322,6 +322,19 @@
     color: rgba(255, 255, 255, 0.4);
 }
 
+/* 下拉框选项样式 - 确保深色背景下可见 */
+.form-group select option,
+.filter-bar select option,
+select option {
+    background: #1a1a2e;
+    color: #fff;
+}
+
+.form-group select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .form-actions {
     display: flex;
     justify-content: flex-end;

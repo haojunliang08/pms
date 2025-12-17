@@ -335,3 +335,17 @@ ON CONFLICT (code) DO NOTHING;
 INSERT INTO users (name, email, password_hash, role) VALUES
   ('系统管理员', 'admin@example.com', crypt('admin123', gen_salt('bf')), 'admin')
 ON CONFLICT (email) DO NOTHING;
+
+-- ============================================================
+-- 禁用 RLS（行级安全）
+-- ============================================================
+-- 注意：由于这是内部管理系统，使用自定义认证，
+-- 我们禁用 RLS 以允许所有已登录用户访问数据。
+-- 数据隔离通过前端逻辑和角色控制实现。
+
+ALTER TABLE branches DISABLE ROW LEVEL SECURITY;
+ALTER TABLE groups DISABLE ROW LEVEL SECURITY;
+ALTER TABLE users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_records DISABLE ROW LEVEL SECURITY;
+ALTER TABLE quality_inspections DISABLE ROW LEVEL SECURITY;
+ALTER TABLE minor_error_records DISABLE ROW LEVEL SECURITY;

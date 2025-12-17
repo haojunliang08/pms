@@ -95,7 +95,7 @@
 }
 
 .top-bar-left {
-    /* 预留空间 */
+    flex: 1;
 }
 
 .top-bar-right {
@@ -139,6 +139,21 @@
 .dropdown-arrow {
     font-size: 0.6rem;
     opacity: 0.7;
+    transition: transform 0.2s ease;
+}
+
+.dropdown-arrow.open {
+    transform: rotate(180deg);
+}
+
+/* 点击外部关闭菜单的透明遮罩 */
+.menu-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 99;
 }
 
 .user-dropdown {

@@ -29,12 +29,23 @@ export default function Groups() {
     async function fetchData() {
         try {
             const [groupsRes, branchesRes, managersRes] = await Promise.all([
-                supabase.from('groups').select('*, branch:branches(*), manager:users(*)').order('created_at'),
+                supabase.from('groups').select('*').order('created_at'),
                 supabase.from('branches').select('*').order('name'),
                 supabase.from('users').select('*').in('role', ['manager', 'admin']).order('name'),
             ])
 
-            setGroups(groupsRes.data || [])
+            if (groupsRes.error || branchesRes.error || managersRes.error) return
+
+            const branchMap = new Map(branchesRes.data?.map(b => [b.id, b]) || [])
+            const managerMap = new Map(managersRes.data?.map(m => [m.id, m]) || [])
+
+            const groupsWithRelations = (groupsRes.data || []).map(group => ({
+                ...group,
+                branch: group.branch_id ? branchMap.get(group.branch_id) : undefined,
+                manager: group.manager_id ? managerMap.get(group.manager_id) : undefined,
+            }))
+
+            setGroups(groupsWithRelations)
             setBranches(branchesRes.data || [])
             setManagers(managersRes.data || [])
         } catch (error) {

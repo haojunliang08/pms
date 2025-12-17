@@ -1,10 +1,5 @@
 /**
  * 员工管理页面
- * 
- * 功能：
- * - 显示所有员工列表（支持按子公司/小组筛选）
- * - 添加、编辑、删除员工
- * - 显示员工角色和所属组织
  */
 
 import { useState, useEffect } from 'react'
@@ -19,10 +14,15 @@ export default function Employees() {
     const [groups, setGroups] = useState<Group[]>([])
     const [loading, setLoading] = useState(true)
     const [showModal, setShowModal] = useState(false)
+    const [showResetPasswordModal, setShowResetPasswordModal] = useState(false)
+    const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null)
+    const [newPassword, setNewPassword] = useState('')
     const [editingUser, setEditingUser] = useState<User | null>(null)
+    const [saving, setSaving] = useState(false)
     const [formData, setFormData] = useState({
         name: '',
         email: '',
+        password: '',
         phone: '',
         role: 'employee' as UserRole,
         branch_id: '',
@@ -38,16 +38,25 @@ export default function Employees() {
     async function fetchData() {
         try {
             const [usersRes, branchesRes, groupsRes] = await Promise.all([
-                supabase.from('users').select('*, branch:branches(*), group:groups(*)').order('name'),
+                supabase.from('users').select('*').order('name'),
                 supabase.from('branches').select('*').order('name'),
                 supabase.from('groups').select('*').order('name'),
             ])
 
-            setUsers(usersRes.data || [])
+            if (usersRes.error || branchesRes.error || groupsRes.error) return
+
+            const branchMap = new Map(branchesRes.data?.map(b => [b.id, b]) || [])
+            const groupMap = new Map(groupsRes.data?.map(g => [g.id, g]) || [])
+
+            const usersWithRelations = (usersRes.data || []).map(user => ({
+                ...user,
+                branch: user.branch_id ? branchMap.get(user.branch_id) : undefined,
+                group: user.group_id ? groupMap.get(user.group_id) : undefined,
+            }))
+
+            setUsers(usersWithRelations)
             setBranches(branchesRes.data || [])
             setGroups(groupsRes.data || [])
-        } catch (error) {
-            console.error('获取数据失败:', error)
         } finally {
             setLoading(false)
         }
@@ -58,7 +67,8 @@ export default function Employees() {
             setEditingUser(user)
             setFormData({
                 name: user.name,
-                email: user.email || '',
+                email: user.email,
+                password: '',
                 phone: user.phone || '',
                 role: user.role,
                 branch_id: user.branch_id || '',
@@ -69,6 +79,7 @@ export default function Employees() {
             setFormData({
                 name: '',
                 email: '',
+                password: '',
                 phone: '',
                 role: 'employee',
                 branch_id: '',
@@ -80,28 +91,40 @@ export default function Employees() {
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
-        try {
-            const data = {
-                name: formData.name,
-                email: formData.email || null,
-                phone: formData.phone || null,
-                role: formData.role,
-                branch_id: formData.branch_id || null,
-                group_id: formData.group_id || null,
-            }
+        setSaving(true)
 
+        try {
             if (editingUser) {
-                const { error } = await supabase.from('users').update(data).eq('id', editingUser.id)
+                const { error } = await supabase.from('users').update({
+                    name: formData.name,
+                    email: formData.email,
+                    phone: formData.phone || null,
+                    role: formData.role,
+                    branch_id: formData.branch_id || null,
+                    group_id: formData.group_id || null,
+                }).eq('id', editingUser.id)
+
                 if (error) throw error
             } else {
-                const { error } = await supabase.from('users').insert(data)
+                const { error } = await supabase.rpc('create_user_with_password', {
+                    p_name: formData.name,
+                    p_email: formData.email,
+                    p_password: formData.password,
+                    p_role: formData.role,
+                    p_branch_id: formData.branch_id || null,
+                    p_group_id: formData.group_id || null,
+                })
+
                 if (error) throw error
             }
+
             setShowModal(false)
             fetchData()
-        } catch (error) {
-            console.error('保存失败:', error)
-            alert('保存失败，请重试')
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : '未知错误'
+            alert('保存失败：' + errorMessage)
+        } finally {
+            setSaving(false)
         }
     }
 
@@ -111,13 +134,36 @@ export default function Employees() {
             const { error } = await supabase.from('users').delete().eq('id', id)
             if (error) throw error
             fetchData()
-        } catch (error) {
-            console.error('删除失败:', error)
+        } catch {
             alert('删除失败，请重试')
         }
     }
 
-    // 筛选逻辑
+    function openResetPasswordModal(userId: string) {
+        setResetPasswordUserId(userId)
+        setNewPassword('')
+        setShowResetPasswordModal(true)
+    }
+
+    async function handleResetPassword(e: React.FormEvent) {
+        e.preventDefault()
+        if (!resetPasswordUserId || !newPassword) return
+
+        try {
+            const { error } = await supabase.rpc('reset_user_password', {
+                p_user_id: resetPasswordUserId,
+                p_new_password: newPassword,
+            })
+
+            if (error) throw error
+
+            alert('密码重置成功！')
+            setShowResetPasswordModal(false)
+        } catch {
+            alert('重置密码失败，请重试')
+        }
+    }
+
     let filteredUsers = users
     if (filterBranch) {
         filteredUsers = filteredUsers.filter(u => u.branch_id === filterBranch)
@@ -126,7 +172,6 @@ export default function Employees() {
         filteredUsers = filteredUsers.filter(u => u.group_id === filterGroup)
     }
 
-    // 根据选中的子公司过滤小组列表
     const availableGroups = filterBranch
         ? groups.filter(g => g.branch_id === filterBranch)
         : groups
@@ -145,7 +190,6 @@ export default function Employees() {
                 <button className="btn-primary" onClick={() => openModal()}>➕ 添加员工</button>
             </header>
 
-            {/* 筛选栏 */}
             <div className="filter-bar">
                 <select value={filterBranch} onChange={e => { setFilterBranch(e.target.value); setFilterGroup('') }}>
                     <option value="">全部子公司</option>
@@ -187,14 +231,15 @@ export default function Employees() {
                             {filteredUsers.map((user) => (
                                 <tr key={user.id}>
                                     <td>{user.name}</td>
-                                    <td>{user.email || '-'}</td>
+                                    <td>{user.email}</td>
                                     <td>{user.phone || '-'}</td>
                                     <td><span className={`badge badge-${user.role}`}>{UserRoleLabels[user.role]}</span></td>
                                     <td>{user.branch?.name || '-'}</td>
                                     <td>{user.group?.name || '-'}</td>
                                     <td>
-                                        <button className="btn-icon" onClick={() => openModal(user)}>✏️</button>
-                                        <button className="btn-icon danger" onClick={() => handleDelete(user.id)}>🗑️</button>
+                                        <button className="btn-icon" onClick={() => openModal(user)} title="编辑">✏️</button>
+                                        <button className="btn-icon" onClick={() => openResetPasswordModal(user.id)} title="重置密码">🔑</button>
+                                        <button className="btn-icon danger" onClick={() => handleDelete(user.id)} title="删除">🗑️</button>
                                     </td>
                                 </tr>
                             ))}
@@ -203,7 +248,6 @@ export default function Employees() {
                 )}
             </div>
 
-            {/* 弹窗表单 */}
             {showModal && (
                 <div className="modal-overlay" onClick={() => setShowModal(false)}>
                     <div className="modal" onClick={e => e.stopPropagation()}>
@@ -216,22 +260,39 @@ export default function Employees() {
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                                     required
+                                    placeholder="请输入姓名"
                                 />
                             </div>
                             <div className="form-group">
-                                <label>邮箱</label>
+                                <label>邮箱（登录账号）*</label>
                                 <input
                                     type="email"
                                     value={formData.email}
                                     onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                    required
+                                    placeholder="请输入邮箱"
                                 />
                             </div>
+                            {!editingUser && (
+                                <div className="form-group">
+                                    <label>初始密码 *</label>
+                                    <input
+                                        type="password"
+                                        value={formData.password}
+                                        onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                        required
+                                        minLength={6}
+                                        placeholder="至少6位"
+                                    />
+                                </div>
+                            )}
                             <div className="form-group">
                                 <label>手机号</label>
                                 <input
                                     type="tel"
                                     value={formData.phone}
                                     onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                    placeholder="可选"
                                 />
                             </div>
                             <div className="form-group">
@@ -252,7 +313,7 @@ export default function Employees() {
                                     value={formData.branch_id}
                                     onChange={e => setFormData({ ...formData, branch_id: e.target.value, group_id: '' })}
                                 >
-                                    <option value="">请选择</option>
+                                    <option value="">请选择（可选）</option>
                                     {branches.map(b => (
                                         <option key={b.id} value={b.id}>{b.name}</option>
                                     ))}
@@ -263,16 +324,49 @@ export default function Employees() {
                                 <select
                                     value={formData.group_id}
                                     onChange={e => setFormData({ ...formData, group_id: e.target.value })}
+                                    disabled={!formData.branch_id}
                                 >
-                                    <option value="">请选择</option>
+                                    <option value="">请选择（可选）</option>
                                     {formGroups.map(g => (
                                         <option key={g.id} value={g.id}>{g.name}</option>
                                     ))}
                                 </select>
+                                {!formData.branch_id && (
+                                    <small style={{ color: 'rgba(255,255,255,0.5)', marginTop: '0.25rem', display: 'block' }}>
+                                        请先选择子公司
+                                    </small>
+                                )}
                             </div>
                             <div className="form-actions">
                                 <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>取消</button>
-                                <button type="submit" className="btn-primary">保存</button>
+                                <button type="submit" className="btn-primary" disabled={saving}>
+                                    {saving ? '保存中...' : '保存'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {showResetPasswordModal && (
+                <div className="modal-overlay" onClick={() => setShowResetPasswordModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()}>
+                        <h2>🔑 重置密码</h2>
+                        <form onSubmit={handleResetPassword}>
+                            <div className="form-group">
+                                <label>新密码 *</label>
+                                <input
+                                    type="password"
+                                    value={newPassword}
+                                    onChange={e => setNewPassword(e.target.value)}
+                                    required
+                                    minLength={6}
+                                    placeholder="至少6位"
+                                />
+                            </div>
+                            <div className="form-actions">
+                                <button type="button" className="btn-secondary" onClick={() => setShowResetPasswordModal(false)}>取消</button>
+                                <button type="submit" className="btn-primary">确认重置</button>
                             </div>
                         </form>
                     </div>

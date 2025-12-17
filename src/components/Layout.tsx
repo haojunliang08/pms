@@ -48,11 +48,9 @@ export default function Layout() {
             setPasswordError('修改失败：' + error)
         } else {
             setPasswordSuccess(true)
+            // 修改密码成功后强制退出重新登录
             setTimeout(() => {
-                setShowPasswordModal(false)
-                setPasswordSuccess(false)
-                setNewPassword('')
-                setConfirmPassword('')
+                signOut()
             }, 1500)
         }
     }
@@ -98,18 +96,22 @@ export default function Layout() {
                             >
                                 <span className="user-avatar">👤</span>
                                 <span className="user-email">{user?.email}</span>
-                                <span className="dropdown-arrow">▼</span>
+                                <span className={`dropdown-arrow ${showUserMenu ? 'open' : ''}`}>▼</span>
                             </button>
 
                             {showUserMenu && (
-                                <div className="user-dropdown">
-                                    <button onClick={() => { setShowPasswordModal(true); setShowUserMenu(false); }}>
-                                        🔑 修改密码
-                                    </button>
-                                    <button onClick={handleSignOut} className="logout-btn">
-                                        🚪 退出登录
-                                    </button>
-                                </div>
+                                <>
+                                    {/* 点击任意位置关闭菜单的透明遮罩 */}
+                                    <div className="menu-backdrop" onClick={() => setShowUserMenu(false)} />
+                                    <div className="user-dropdown">
+                                        <button onClick={() => { setShowPasswordModal(true); setShowUserMenu(false); }}>
+                                            🔑 修改密码
+                                        </button>
+                                        <button onClick={handleSignOut} className="logout-btn">
+                                            🚪 退出登录
+                                        </button>
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>
