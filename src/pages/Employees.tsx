@@ -6,9 +6,11 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import type { User, Branch, Group, UserRole } from '../types/database'
 import { UserRoleLabels } from '../types/database'
+import { useAuth } from '../contexts/AuthContext'
 import './PageStyles.css'
 
 export default function Employees() {
+    const { user: currentUser } = useAuth()
     const [users, setUsers] = useState<(User & { branch?: Branch; group?: Group })[]>([])
     const [branches, setBranches] = useState<Branch[]>([])
     const [groups, setGroups] = useState<Group[]>([])
@@ -48,11 +50,21 @@ export default function Employees() {
             const branchMap = new Map(branchesRes.data?.map(b => [b.id, b]) || [])
             const groupMap = new Map(groupsRes.data?.map(g => [g.id, g]) || [])
 
-            const usersWithRelations = (usersRes.data || []).map(user => ({
+            let usersWithRelations = (usersRes.data || []).map(user => ({
                 ...user,
                 branch: user.branch_id ? branchMap.get(user.branch_id) : undefined,
                 group: user.group_id ? groupMap.get(user.group_id) : undefined,
             }))
+
+            // 数据隔离：根据当前用户角色过滤
+            if (currentUser?.role === 'manager') {
+                // 项目经理只能看到自己和自己小组的普通员工
+                usersWithRelations = usersWithRelations.filter(u =>
+                    u.id === currentUser.id ||
+                    (u.group_id === currentUser.group_id && u.role === 'employee')
+                )
+            }
+            // admin 无需过滤，可以看到所有员工
 
             setUsers(usersWithRelations)
             setBranches(branchesRes.data || [])
@@ -164,6 +176,45 @@ export default function Employees() {
         }
     }
 
+    // 权限判断：是否可以编辑该用户
+    function canEditUser(targetUser: User): boolean {
+        if (!currentUser) return false
+        if (currentUser.role === 'admin') return true
+        if (currentUser.role === 'manager') {
+            // 不能编辑自己
+            if (targetUser.id === currentUser.id) return false
+            // 只能编辑同组的普通员工（下属）
+            return targetUser.group_id === currentUser.group_id && targetUser.role === 'employee'
+        }
+        return false
+    }
+
+    // 权限判断：是否可以删除该用户
+    function canDeleteUser(targetUser: User): boolean {
+        if (!currentUser) return false
+        if (currentUser.role === 'admin') return true
+        if (currentUser.role === 'manager') {
+            // 不能删除自己
+            if (targetUser.id === currentUser.id) return false
+            // 只能删除同组的普通员工（下属）
+            return targetUser.group_id === currentUser.group_id && targetUser.role === 'employee'
+        }
+        return false
+    }
+
+    // 权限判断：是否可以重置该用户的密码
+    function canResetPassword(targetUser: User): boolean {
+        if (!currentUser) return false
+        if (currentUser.role === 'admin') return true
+        if (currentUser.role === 'manager') {
+            // 不能修改自己的密码
+            if (targetUser.id === currentUser.id) return false
+            // 只能修改同组的普通员工（下属）
+            return targetUser.group_id === currentUser.group_id && targetUser.role === 'employee'
+        }
+        return false
+    }
+
     let filteredUsers = users
     if (filterBranch) {
         filteredUsers = filteredUsers.filter(u => u.branch_id === filterBranch)
@@ -187,7 +238,9 @@ export default function Employees() {
                     <h1>员工管理</h1>
                     <p>管理所有员工信息和角色</p>
                 </div>
-                <button className="btn-primary" onClick={() => openModal()}>➕ 添加员工</button>
+                {currentUser?.role === 'admin' && (
+                    <button className="btn-primary" onClick={() => openModal()}>➕ 添加员工</button>
+                )}
             </header>
 
             <div className="filter-bar">
@@ -237,9 +290,15 @@ export default function Employees() {
                                     <td>{user.branch?.name || '-'}</td>
                                     <td>{user.group?.name || '-'}</td>
                                     <td>
-                                        <button className="btn-icon" onClick={() => openModal(user)} title="编辑">✏️</button>
-                                        <button className="btn-icon" onClick={() => openResetPasswordModal(user.id)} title="重置密码">🔑</button>
-                                        <button className="btn-icon danger" onClick={() => handleDelete(user.id)} title="删除">🗑️</button>
+                                        {canEditUser(user) && (
+                                            <button className="btn-icon" onClick={() => openModal(user)} title="编辑">✏️</button>
+                                        )}
+                                        {canResetPassword(user) && (
+                                            <button className="btn-icon" onClick={() => openResetPasswordModal(user.id)} title="重置密码">🔑</button>
+                                        )}
+                                        {canDeleteUser(user) && (
+                                            <button className="btn-icon danger" onClick={() => handleDelete(user.id)} title="删除">🗑️</button>
+                                        )}
                                     </td>
                                 </tr>
                             ))}

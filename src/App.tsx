@@ -82,6 +82,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+// 基于角色的路由保护组件
+function RoleRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
+  const { user } = useAuth()
+
+  if (!user || !allowedRoles.includes(user.role)) {
+    return <Navigate to="/" replace />
+  }
+
+  return <>{children}</>
+}
+
 // 路由配置组件
 function AppRoutes() {
   return (
@@ -99,11 +110,27 @@ function AppRoutes() {
         }
       >
         <Route index element={<Dashboard />} />
-        <Route path="branches" element={<Branches />} />
-        <Route path="groups" element={<Groups />} />
-        <Route path="employees" element={<Employees />} />
+        <Route path="branches" element={
+          <RoleRoute allowedRoles={['admin']}>
+            <Branches />
+          </RoleRoute>
+        } />
+        <Route path="groups" element={
+          <RoleRoute allowedRoles={['admin', 'manager']}>
+            <Groups />
+          </RoleRoute>
+        } />
+        <Route path="employees" element={
+          <RoleRoute allowedRoles={['admin', 'manager']}>
+            <Employees />
+          </RoleRoute>
+        } />
         <Route path="performance" element={<Performance />} />
-        <Route path="import" element={<ImportData />} />
+        <Route path="import" element={
+          <RoleRoute allowedRoles={['admin', 'manager']}>
+            <ImportData />
+          </RoleRoute>
+        } />
       </Route>
     </Routes>
   )

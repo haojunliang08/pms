@@ -9,14 +9,14 @@ import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import './Layout.css'
 
-// 导航菜单配置
+// 导航菜单配置（包含角色权限）
 const navItems = [
-    { path: '/', label: '仪表盘', icon: '📊' },
-    { path: '/branches', label: '子公司管理', icon: '🏢' },
-    { path: '/groups', label: '小组管理', icon: '👥' },
-    { path: '/employees', label: '员工管理', icon: '👤' },
-    { path: '/performance', label: '绩效记录', icon: '📈' },
-    { path: '/import', label: '数据导入', icon: '📥' },
+    { path: '/', label: '仪表盘', icon: '📊', roles: ['admin', 'manager', 'employee'] },
+    { path: '/branches', label: '子公司管理', icon: '🏢', roles: ['admin'] },
+    { path: '/groups', label: '小组管理', icon: '👥', roles: ['admin', 'manager'] },
+    { path: '/employees', label: '员工管理', icon: '👤', roles: ['admin', 'manager'] },
+    { path: '/performance', label: '绩效记录', icon: '📈', roles: ['admin', 'manager', 'employee'] },
+    { path: '/import', label: '数据导入', icon: '📥', roles: ['admin', 'manager'] },
 ]
 
 export default function Layout() {
@@ -24,6 +24,7 @@ export default function Layout() {
     const { user, signOut, changePassword } = useAuth()
     const [showPasswordModal, setShowPasswordModal] = useState(false)
     const [showUserMenu, setShowUserMenu] = useState(false)
+    const [oldPassword, setOldPassword] = useState('')
     const [newPassword, setNewPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
     const [passwordError, setPasswordError] = useState('')
@@ -33,8 +34,13 @@ export default function Layout() {
         e.preventDefault()
         setPasswordError('')
 
+        if (!oldPassword) {
+            setPasswordError('请输入原密码')
+            return
+        }
+
         if (newPassword.length < 6) {
-            setPasswordError('密码长度至少6位')
+            setPasswordError('新密码长度至少6位')
             return
         }
 
@@ -43,7 +49,7 @@ export default function Layout() {
             return
         }
 
-        const { error } = await changePassword(newPassword)
+        const { error } = await changePassword(oldPassword, newPassword)
         if (error) {
             setPasswordError('修改失败：' + error)
         } else {
@@ -68,16 +74,18 @@ export default function Layout() {
                 </div>
 
                 <nav className="nav-menu">
-                    {navItems.map((item) => (
-                        <Link
-                            key={item.path}
-                            to={item.path}
-                            className={`nav-item ${location.pathname === item.path ? 'active' : ''}`}
-                        >
-                            <span className="nav-icon">{item.icon}</span>
-                            <span className="nav-label">{item.label}</span>
-                        </Link>
-                    ))}
+                    {navItems
+                        .filter(item => item.roles.includes(user?.role || ''))
+                        .map((item) => (
+                            <Link
+                                key={item.path}
+                                to={item.path}
+                                className={`nav-item ${location.pathname === item.path ? 'active' : ''}`}
+                            >
+                                <span className="nav-icon">{item.icon}</span>
+                                <span className="nav-label">{item.label}</span>
+                            </Link>
+                        ))}
                 </nav>
             </aside>
 
@@ -134,7 +142,17 @@ export default function Layout() {
                             <form onSubmit={handleChangePassword}>
                                 {passwordError && <div className="error-msg">{passwordError}</div>}
                                 <div className="form-group">
-                                    <label>新密码</label>
+                                    <label>原密码 *</label>
+                                    <input
+                                        type="password"
+                                        value={oldPassword}
+                                        onChange={e => setOldPassword(e.target.value)}
+                                        placeholder="请输入当前密码"
+                                        required
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>新密码 *</label>
                                     <input
                                         type="password"
                                         value={newPassword}

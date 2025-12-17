@@ -31,7 +31,7 @@ interface AuthContextType {
     loading: boolean
     signIn: (email: string, password: string) => Promise<{ error: string | null }>
     signOut: () => void
-    changePassword: (newPassword: string) => Promise<{ error: string | null }>
+    changePassword: (oldPassword: string, newPassword: string) => Promise<{ error: string | null }>
 }
 
 const SESSION_KEY = 'pms_session'
@@ -119,12 +119,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null)
     }
 
-    async function changePassword(newPassword: string) {
+    async function changePassword(oldPassword: string, newPassword: string) {
         if (!user) {
             return { error: '未登录' }
         }
 
         try {
+            // 先验证原密码是否正确
+            const { data: verifyData, error: verifyError } = await supabase.rpc('verify_user_login', {
+                p_email: user.email,
+                p_password: oldPassword,
+            })
+
+            if (verifyError || !verifyData || verifyData.length === 0) {
+                return { error: '原密码错误' }
+            }
+
+            // 原密码正确，修改密码
             const { error } = await supabase.rpc('change_user_password', {
                 p_user_id: user.id,
                 p_new_password: newPassword,
