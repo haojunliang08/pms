@@ -1,0 +1,21 @@
+{
+    "name": "pms",
+    "version": "https://edgeone.ai/pages",
+    "envs": {
+        "VITE_SUPABASE_URL": "${VITE_SUPABASE_URL}",
+        "VITE_SUPABASE_ANON_KEY": "${VITE_SUPABASE_ANON_KEY}"
+    },
+    "build": {
+        "command": "npm run build",
+        "outputDir": "dist"
+    },
+    "routes": [
+        {
+            "handle": "filesystem"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/index.html"
+        }
+    ]
+}
