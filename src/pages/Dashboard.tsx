@@ -4,7 +4,6 @@
  * 系统首页，显示关键业务指标：
  * - 员工总数、小组数量
  * - 本月绩效概览
- * - 快速操作入口
  */
 
 import { useState, useEffect } from 'react'
@@ -90,14 +89,7 @@ export default function Dashboard() {
                 ))}
             </div>
 
-            <div className="quick-actions">
-                <h2>快速操作</h2>
-                <div className="action-buttons">
-                    <button className="action-btn primary">➕ 新增员工</button>
-                    <button className="action-btn secondary">📥 导入质检数据</button>
-                    <button className="action-btn secondary">📊 生成绩效报表</button>
-                </div>
-            </div>
+
         </div>
     )
 }
