@@ -15,6 +15,7 @@ const navItems = [
     { path: '/branches', label: '子公司管理', icon: '🏢', roles: ['admin'] },
     { path: '/groups', label: '小组管理', icon: '👥', roles: ['admin', 'manager'] },
     { path: '/employees', label: '员工管理', icon: '👤', roles: ['admin', 'manager'] },
+    { path: '/qc-accuracy', label: '质检准确率', icon: '🎯', roles: ['admin', 'manager', 'employee'] },
     { path: '/performance', label: '绩效记录', icon: '📈', roles: ['admin', 'manager', 'employee'] },
     { path: '/import', label: '数据导入', icon: '📥', roles: ['admin', 'manager'] },
 ]

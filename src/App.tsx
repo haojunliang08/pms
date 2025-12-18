@@ -13,6 +13,7 @@ import Dashboard from './pages/Dashboard'
 import Branches from './pages/Branches'
 import Groups from './pages/Groups'
 import Employees from './pages/Employees'
+import QCAccuracy from './pages/QCAccuracy'
 import Performance from './pages/Performance'
 import ImportData from './pages/ImportData'
 import './App.css'
@@ -125,6 +126,7 @@ function AppRoutes() {
             <Employees />
           </RoleRoute>
         } />
+        <Route path="qc-accuracy" element={<QCAccuracy />} />
         <Route path="performance" element={<Performance />} />
         <Route path="import" element={
           <RoleRoute allowedRoles={['admin', 'manager']}>
