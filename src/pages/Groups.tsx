@@ -1,50 +1,132 @@
 /**
- * 小组管理页面
+ * ============================================================================
+ * Groups.tsx - 小组管理页面
+ * ============================================================================
  * 
- * 功能：
- * - 显示所有小组列表
- * - 按子公司筛选
- * - 添加、编辑、删除小组
+ * 【文件作用】
+ * 管理各子公司下的工作小组。
+ * 提供增删改查功能，支持按子公司筛选。
+ * 
+ * 【数据关联】
+ * - 每个小组属于一个子公司（branch_id 外键）
+ * - 每个小组可以有一个负责人（manager_id 外键关联 users 表）
+ * 
+ * 【本页面的关键技术点】
+ * 1. 多表关联查询 - 同时获取 groups、branches、managers
+ * 2. 手动数据关联 - 使用 Map 将关联数据合并
+ * 3. 筛选功能 - 按子公司过滤小组列表
+ * 
+ * 【手动关联 vs 自动关联】
+ * Supabase 支持自动关联查询（如 select('*, branch:branches(*)')）
+ * 但有时需要更灵活的控制，本项目使用手动关联方式
  */
+
+// ============================================================================
+// 导入部分
+// ============================================================================
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Group, Branch, User } from '../types/database'
 import './PageStyles.css'
 
+// ============================================================================
+// 组件定义
+// ============================================================================
+
 export default function Groups() {
+    // =========== 状态定义 ===========
+
+    /**
+     * 小组列表（带关联数据）
+     * 
+     * (Group & { branch?: Branch; manager?: User })[]
+     * 这是 TypeScript 交叉类型 (&) 的应用
+     * 表示每个元素既有 Group 的所有属性，又有额外的 branch 和 manager 属性
+     */
     const [groups, setGroups] = useState<(Group & { branch?: Branch; manager?: User })[]>([])
+
+    /** 子公司列表（用于筛选下拉和表单选择） */
     const [branches, setBranches] = useState<Branch[]>([])
+
+    /** 可选的负责人列表（manager 或 admin 角色） */
     const [managers, setManagers] = useState<User[]>([])
+
+    /** 加载状态 */
     const [loading, setLoading] = useState(true)
+
+    /** 是否显示弹窗 */
     const [showModal, setShowModal] = useState(false)
+
+    /** 正在编辑的小组（null 表示添加模式） */
     const [editingGroup, setEditingGroup] = useState<Group | null>(null)
+
+    /** 表单数据 */
     const [formData, setFormData] = useState({ name: '', branch_id: '', manager_id: '' })
+
+    /** 筛选条件：子公司 */
     const [filterBranch, setFilterBranch] = useState('')
+
+    // =========== 生命周期 ===========
 
     useEffect(() => {
         fetchData()
     }, [])
 
+    // =========== 数据获取 ===========
+
+    /**
+     * 获取所有数据
+     * 
+     * 使用 Promise.all 并行获取三个表的数据
+     * 然后手动进行数据关联
+     */
     async function fetchData() {
         try {
+            // 并行查询三个表
             const [groupsRes, branchesRes, managersRes] = await Promise.all([
                 supabase.from('groups').select('*').order('created_at'),
                 supabase.from('branches').select('*').order('name'),
+                /**
+                 * 获取可作为负责人的用户
+                 * .in('role', ['manager', 'admin']) 表示 role 在给定数组中
+                 * 相当于 SQL: WHERE role IN ('manager', 'admin')
+                 */
                 supabase.from('users').select('*').in('role', ['manager', 'admin']).order('name'),
             ])
 
+            // 检查是否有错误
             if (groupsRes.error || branchesRes.error || managersRes.error) return
 
+            // ===== 手动数据关联 =====
+
+            /**
+             * 创建 Map 用于快速查找
+             * 
+             * Map 是 ES6 的数据结构，比普通对象查找更高效
+             * 
+             * branchesRes.data?.map(b => [b.id, b]) 将数组转换为 [key, value] 对
+             * new Map([...]) 用这些键值对创建 Map
+             * 
+             * branchMap.get(id) 可以 O(1) 时间查找
+             */
             const branchMap = new Map(branchesRes.data?.map(b => [b.id, b]) || [])
             const managerMap = new Map(managersRes.data?.map(m => [m.id, m]) || [])
 
+            /**
+             * 为每个小组添加关联数据
+             * 
+             * .map() 遍历数组，返回新数组
+             * 使用展开运算符 ...group 保留原有属性
+             * 添加 branch 和 manager 关联对象
+             */
             const groupsWithRelations = (groupsRes.data || []).map(group => ({
                 ...group,
                 branch: group.branch_id ? branchMap.get(group.branch_id) : undefined,
                 manager: group.manager_id ? managerMap.get(group.manager_id) : undefined,
             }))
 
+            // 更新状态
             setGroups(groupsWithRelations)
             setBranches(branchesRes.data || [])
             setManagers(managersRes.data || [])
@@ -54,6 +136,8 @@ export default function Groups() {
             setLoading(false)
         }
     }
+
+    // =========== 弹窗控制 ===========
 
     function openModal(group?: Group) {
         if (group) {
@@ -65,10 +149,13 @@ export default function Groups() {
             })
         } else {
             setEditingGroup(null)
+            // 默认选择第一个子公司
             setFormData({ name: '', branch_id: branches[0]?.id || '', manager_id: '' })
         }
         setShowModal(true)
     }
+
+    // =========== CRUD 操作 ===========
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
@@ -76,6 +163,7 @@ export default function Groups() {
             const data = {
                 name: formData.name,
                 branch_id: formData.branch_id,
+                // 空字符串转为 null（数据库外键不能是空字符串）
                 manager_id: formData.manager_id || null,
             }
 
@@ -106,13 +194,23 @@ export default function Groups() {
         }
     }
 
-    // 根据筛选条件过滤
+    // =========== 筛选逻辑 ===========
+
+    /**
+     * 根据筛选条件过滤小组列表
+     * 
+     * 三元表达式：filterBranch 有值时进行过滤，否则返回全部
+     * .filter() 返回满足条件的新数组
+     */
     const filteredGroups = filterBranch
         ? groups.filter(g => g.branch_id === filterBranch)
         : groups
 
+    // =========== 渲染 ===========
+
     return (
         <div className="page-container">
+            {/* 页面头部 */}
             <header className="page-header">
                 <div>
                     <h1>小组管理</h1>
@@ -131,6 +229,7 @@ export default function Groups() {
                 </select>
             </div>
 
+            {/* 数据表格 */}
             <div className="table-container">
                 {loading ? (
                     <div className="loading">加载中...</div>
@@ -155,6 +254,13 @@ export default function Groups() {
                             {filteredGroups.map((group) => (
                                 <tr key={group.id}>
                                     <td>{group.name}</td>
+                                    {/* 
+                                        可选链操作符 (?.)
+                                        group.branch?.name 等价于：
+                                        group.branch ? group.branch.name : undefined
+                                        
+                                        || '-' 在结果为 undefined 时显示 '-'
+                                    */}
                                     <td><span className="badge">{group.branch?.name || '-'}</span></td>
                                     <td>{group.manager?.name || '-'}</td>
                                     <td>{new Date(group.created_at).toLocaleDateString('zh-CN')}</td>
