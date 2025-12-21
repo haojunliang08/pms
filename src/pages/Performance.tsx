@@ -15,9 +15,11 @@
  */
 
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { PerformanceRecord, Branch, Group, User } from '../types/database'
 import { useAuth } from '../contexts/AuthContext'
+import './PageStyles.css'
 import './PageStyles.css'
 
 // 员工数据类型
@@ -36,6 +38,7 @@ interface EmployeeData {
 
 export default function Performance() {
     const { user: currentUser } = useAuth()
+    const navigate = useNavigate()
 
     // ========== 基础数据 ==========
     const [records, setRecords] = useState<(PerformanceRecord & { user?: User; branch?: Branch; group?: Group })[]>([])
@@ -352,6 +355,9 @@ export default function Performance() {
     if (filterBranch) filteredRecords = filteredRecords.filter(r => r.branch_id === filterBranch)
     if (filterGroup) filteredRecords = filteredRecords.filter(r => r.group_id === filterGroup)
 
+    // 按得分从高到低排序
+    filteredRecords = filteredRecords.sort((a, b) => (b.final_score || 0) - (a.final_score || 0))
+
     const availableGroups = filterBranch ? groups.filter(g => g.branch_id === filterBranch) : groups
 
     const generateAvailableGroups = generateBranch
@@ -385,7 +391,7 @@ export default function Performance() {
             (accuracyScore * 30 / 100) -
             (errorDeduction * 10 / 100)
 
-        return Math.max(0, Math.min(100, score)).toFixed(1)
+        return Math.max(0, Math.min(100, score)).toFixed(2)
     }
 
     const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'manager'
@@ -441,7 +447,7 @@ export default function Performance() {
                             {filteredRecords.map((record) => {
                                 const level = getScoreLevel(record.final_score)
                                 const accuracy = record.total_inspected > 0
-                                    ? ((1 - record.total_errors / record.total_inspected) * 100).toFixed(1)
+                                    ? ((1 - record.total_errors / record.total_inspected) * 100).toFixed(2)
                                     : '-'
 
                                 return (
@@ -454,8 +460,15 @@ export default function Performance() {
                                         <td>{record.onsite_performance}</td>
                                         <td>{record.annotation_score}</td>
                                         <td>{record.minor_error_count}</td>
-                                        <td>{accuracy}%</td>
-                                        <td className="score-cell">{record.final_score?.toFixed(1) || '-'}</td>
+                                        <td>
+                                            <span
+                                                style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                                                onClick={() => navigate(`/qc-accuracy?period=${record.period}&user=${record.user_id}`)}
+                                            >
+                                                {accuracy}%
+                                            </span>
+                                        </td>
+                                        <td className="score-cell">{record.final_score?.toFixed(2) || '-'}</td>
                                         <td><span className={`badge ${level.class}`}>{level.label}</span></td>
                                         <td>
                                             <button className="btn-icon" onClick={() => showDetails(record)}>👁️</button>
@@ -484,7 +497,7 @@ export default function Performance() {
                                 <h3>📊 出勤 (权重 {selectedRecord.weight_attendance}%)</h3>
                                 <p>实际出勤: <strong>{selectedRecord.actual_attendance}</strong> 天</p>
                                 <p>应出勤: <strong>{selectedRecord.required_attendance}</strong> 天</p>
-                                <p>出勤率: <strong>{(selectedRecord.actual_attendance / selectedRecord.required_attendance * 100).toFixed(1)}%</strong></p>
+                                <p>出勤率: <strong>{(selectedRecord.actual_attendance / selectedRecord.required_attendance * 100).toFixed(2)}%</strong></p>
                             </div>
                             <div className="detail-section">
                                 <h3>📝 标注得分 (权重 {selectedRecord.weight_annotation}%)</h3>
@@ -600,7 +613,7 @@ export default function Performance() {
                                         </thead>
                                         <tbody>
                                             {employeeDataList.map(emp => {
-                                                const accuracy = emp.total_inspected > 0 ? ((1 - emp.total_errors / emp.total_inspected) * 100).toFixed(1) : '-'
+                                                const accuracy = emp.total_inspected > 0 ? ((1 - emp.total_errors / emp.total_inspected) * 100).toFixed(2) : '-'
                                                 return (
                                                     <tr key={emp.user_id} style={{ opacity: emp.selected ? 1 : 0.5 }}>
                                                         <td><input type="checkbox" checked={emp.selected} onChange={e => updateEmployeeData(emp.user_id, 'selected', e.target.checked)} /></td>

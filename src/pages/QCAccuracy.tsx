@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import type { QualityInspection, Branch, Group, User } from '../types/database'
@@ -22,6 +23,12 @@ interface ExtendedQCRecord extends QualityInspection {
 
 export default function QCAccuracy() {
     const { user: currentUser } = useAuth()
+    const [searchParams] = useSearchParams()
+
+    // 从 URL 获取参数（从绩效页面跳转来时）
+    const urlPeriod = searchParams.get('period')  // 格式: 2025-11
+    const urlUser = searchParams.get('user')      // user_id
+
     const [records, setRecords] = useState<ExtendedQCRecord[]>([])
     const [branches, setBranches] = useState<Branch[]>([])
     const [groups, setGroups] = useState<Group[]>([])
@@ -40,16 +47,16 @@ export default function QCAccuracy() {
     } | null>(null)
     const [saving, setSaving] = useState(false)
 
-    // 日期筛选
+    // 日期筛选 - 如果有URL参数则使用参数中的月份
     const today = new Date()
-    const firstDayOfMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    const defaultStart = urlPeriod ? `${urlPeriod}-01` : `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+    const defaultEnd = urlPeriod ? `${urlPeriod}-31` : `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
 
-    const [filterDateStart, setFilterDateStart] = useState(firstDayOfMonth)
-    const [filterDateEnd, setFilterDateEnd] = useState(todayStr)
+    const [filterDateStart, setFilterDateStart] = useState(defaultStart)
+    const [filterDateEnd, setFilterDateEnd] = useState(defaultEnd)
     const [filterBranch, setFilterBranch] = useState(currentUser?.role === 'manager' ? (currentUser?.branch_id || '') : '')
     const [filterGroup, setFilterGroup] = useState('')
-    const [filterEmployee, setFilterEmployee] = useState('')
+    const [filterEmployee, setFilterEmployee] = useState(urlUser || '')
 
     useEffect(() => { fetchData() }, [currentUser])
 
@@ -162,7 +169,7 @@ export default function QCAccuracy() {
                 {currentUser?.role === 'admin' && <select value={filterBranch} onChange={e => { setFilterBranch(e.target.value); setFilterGroup(''); setFilterEmployee('') }}><option value="">全部子公司</option>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select>}
                 {currentUser?.role !== 'employee' && <select value={filterGroup} onChange={e => { setFilterGroup(e.target.value); setFilterEmployee('') }}><option value="">全部小组</option>{availableGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select>}
                 <select value={filterEmployee} onChange={e => setFilterEmployee(e.target.value)}><option value="">全部员工</option>{availableEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
-                <button className="btn-secondary" onClick={() => { setFilterDateStart(firstDayOfMonth); setFilterDateEnd(todayStr); setFilterBranch(currentUser?.role === 'manager' ? (currentUser?.branch_id || '') : ''); setFilterGroup(''); setFilterEmployee('') }}>重置筛选</button>
+                <button className="btn-secondary" onClick={() => { const t = new Date(); setFilterDateStart(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-01`); setFilterDateEnd(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`); setFilterBranch(currentUser?.role === 'manager' ? (currentUser?.branch_id || '') : ''); setFilterGroup(''); setFilterEmployee('') }}>重置筛选</button>
             </div>
             <div className="table-container">
                 {loading ? <div className="loading">加载中...</div> : filteredRecords.length === 0 ? (
@@ -186,7 +193,7 @@ export default function QCAccuracy() {
                                     <td>{r.batch_name || '-'}</td>
                                     <td>{r.inspected_count}</td>
                                     <td>{r.error_count}</td>
-                                    <td className={acc >= ACCURACY_THRESHOLD ? 'accuracy-pass' : 'accuracy-fail'}><strong>{acc.toFixed(1)}%</strong></td>
+                                    <td className={acc >= ACCURACY_THRESHOLD ? 'accuracy-pass' : 'accuracy-fail'}><strong>{acc.toFixed(2)}%</strong></td>
                                     <td><span className={`badge ${acc >= ACCURACY_THRESHOLD ? 'badge-success' : 'badge-danger'}`}>{acc >= ACCURACY_THRESHOLD ? '达标' : '不达标'}</span></td>
                                     {canEdit && (
                                         <td>
