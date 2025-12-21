@@ -60,17 +60,32 @@ import './Login.css'
  * export default 表示这是模块的默认导出
  * function Login() 是函数式组件的定义方式
  */
+// 邮箱后缀选项
+const EMAIL_SUFFIX_OPTIONS = [
+    { value: '@labelvibe.com', label: '@labelvibe.com' },
+    { value: '@qq.com', label: '@qq.com' },
+    { value: '@163.com', label: '@163.com' },
+    { value: 'custom', label: '自定义' },
+]
+
 export default function Login() {
     // =========== 状态定义 ===========
 
     /**
-     * 邮箱输入状态
-     * 
-     * useState('') 创建一个初始值为空字符串的状态
-     * email - 当前值
-     * setEmail - 更新值的函数
+     * 邮箱前缀输入状态（当选择后缀时使用）
      */
-    const [email, setEmail] = useState('')
+    const [emailPrefix, setEmailPrefix] = useState('')
+
+    /**
+     * 邮箱后缀选择状态
+     * 默认为 @labelvibe.com
+     */
+    const [emailSuffix, setEmailSuffix] = useState('@labelvibe.com')
+
+    /**
+     * 完整邮箱输入状态（当选择自定义时使用）
+     */
+    const [fullEmail, setFullEmail] = useState('')
 
     /** 密码输入状态 */
     const [password, setPassword] = useState('')
@@ -87,6 +102,21 @@ export default function Login() {
      * 用于禁用登录按钮并显示"登录中..."
      */
     const [loading, setLoading] = useState(false)
+
+    /**
+     * 判断是否为自定义邮箱模式
+     */
+    const isCustomEmail = emailSuffix === 'custom'
+
+    /**
+     * 获取最终的完整邮箱地址
+     */
+    const getFinalEmail = () => {
+        if (isCustomEmail) {
+            return fullEmail
+        }
+        return emailPrefix + emailSuffix
+    }
 
     // =========== Hook 使用 ===========
 
@@ -139,7 +169,7 @@ export default function Login() {
          * signIn 返回 { error: string | null }
          * 使用解构赋值获取 error 属性
          */
-        const { error } = await signIn(email, password)
+        const { error } = await signIn(getFinalEmail(), password)
 
         // 处理登录结果
         if (error) {
@@ -199,30 +229,53 @@ export default function Login() {
 
                     {/* 邮箱输入框组 */}
                     <div className="form-group">
-                        {/* 
-                            label 的 htmlFor 属性
-                            与 input 的 id 关联
-                            点击 label 时会聚焦到对应的 input
-                        */}
                         <label htmlFor="email">邮箱</label>
-                        <input
-                            id="email"
-                            type="email"  /* HTML5 邮箱类型，提供格式验证 */
-                            value={email} /* 受控组件：value 由 state 控制 */
-                            onChange={(e) => setEmail(e.target.value)}
-                            /* 
-                                onChange 事件处理
-                                
-                                e 是事件对象（React 合成事件）
-                                e.target 是触发事件的 DOM 元素（input）
-                                e.target.value 是输入框的当前值
-                                
-                                每次输入变化，都会调用 setEmail 更新状态
-                            */
-                            placeholder="请输入邮箱"
-                            required  /* HTML5 验证：字段必填 */
-                            autoComplete="email"  /* 浏览器自动填充提示 */
-                        />
+                        <div className="email-input-wrapper">
+                            {isCustomEmail ? (
+                                /* 自定义模式：输入完整邮箱 */
+                                <input
+                                    id="email"
+                                    type="email"
+                                    value={fullEmail}
+                                    onChange={(e) => setFullEmail(e.target.value)}
+                                    placeholder="请输入完整邮箱"
+                                    required
+                                    autoComplete="email"
+                                    className="email-full-input"
+                                />
+                            ) : (
+                                /* 前缀+后缀模式 */
+                                <input
+                                    id="email"
+                                    type="text"
+                                    value={emailPrefix}
+                                    onChange={(e) => setEmailPrefix(e.target.value)}
+                                    placeholder="请输入邮箱前缀"
+                                    required
+                                    autoComplete="email"
+                                    className="email-prefix-input"
+                                />
+                            )}
+                            <select
+                                value={emailSuffix}
+                                onChange={(e) => {
+                                    setEmailSuffix(e.target.value)
+                                    // 切换模式时清空输入
+                                    if (e.target.value === 'custom') {
+                                        setFullEmail('')
+                                    } else {
+                                        setEmailPrefix('')
+                                    }
+                                }}
+                                className="email-suffix-select"
+                            >
+                                {EMAIL_SUFFIX_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
 
                     {/* 密码输入框组 */}

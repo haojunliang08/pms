@@ -79,6 +79,89 @@
     color: rgba(255, 255, 255, 0.4);
 }
 
+/* 邮箱输入包装器 - 并排布局 */
+.email-input-wrapper {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* 邮箱前缀输入框 */
+.email-prefix-input {
+    flex: 1.2;
+    padding: 0.875rem 1rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+    font-size: 1rem;
+    min-width: 0;
+    transition: all 0.3s ease;
+}
+
+/* 完整邮箱输入框（自定义模式） */
+.email-full-input {
+    flex: 1.2;
+    padding: 0.875rem 1rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+    font-size: 1rem;
+    min-width: 0;
+    transition: all 0.3s ease;
+}
+
+.email-prefix-input:focus,
+.email-full-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.email-prefix-input::placeholder,
+.email-full-input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+/* 邮箱后缀下拉选择框 */
+.email-suffix-select {
+    flex: 1;
+    max-width: 220px;
+    padding: 0.875rem 0.6rem;
+    padding-right: 1.8rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.85rem;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    transition: all 0.3s ease;
+}
+
+.email-suffix-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.email-suffix-select option {
+    background: #1a1a2e;
+    color: #fff;
+    padding: 0.5rem;
+}
+
 .error-message {
     background: rgba(255, 107, 107, 0.1);
     border: 1px solid rgba(255, 107, 107, 0.3);
