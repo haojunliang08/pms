@@ -29,14 +29,7 @@
  * useState - 状态管理 Hook
  * 用于存储输入框的值、错误信息、加载状态
  */
-import { useState } from 'react'
-
-/**
- * FormEvent 类型
- * 表单事件的 TypeScript 类型
- * 用于 handleSubmit 函数的参数类型注解
- */
-import type { FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 
 /**
  * useNavigate - React Router 的导航 Hook
@@ -283,7 +276,7 @@ export default function Login() {
                         <label htmlFor="password">密码</label>
                         <input
                             id="password"
-                            type="password"  /* 密码类型，输入内容会隐藏 */
+                            type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder="请输入密码"
