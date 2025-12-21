@@ -12,13 +12,13 @@
  * 
  * 1. 数据可见性（数据隔离）：
  *    - admin: 可以看到所有用户
- *    - manager: 只能看到自己和同小组的普通员工
+ *    - manager: 可以看到同分公司的普通员工和其他项目经理（不含admin）
  *    - employee: 不能访问此页面（路由层控制）
  * 
  * 2. 操作权限：
  *    - admin: 可以添加、编辑、删除任何用户，重置任何人密码
- *    - manager: 可以编辑、删除同组下属，重置下属密码
- *              不能修改自己、不能看其他组、不能添加用户
+ *    - manager: 可以编辑、删除同分公司的普通员工，重置其密码
+ *              不能修改自己、不能修改其他项目经理、不能添加用户
  * 
  * 【关键技术点】
  * 1. 基于角色的数据过滤
@@ -94,8 +94,8 @@ export default function Employees() {
         group_id: '',
     })
 
-    /** 筛选条件 */
-    const [filterBranch, setFilterBranch] = useState('')
+    /** 筛选条件 - 项目经理默认筛选自己的分公司 */
+    const [filterBranch, setFilterBranch] = useState(currentUser?.role === 'manager' ? (currentUser?.branch_id || '') : '')
     const [filterGroup, setFilterGroup] = useState('')
 
     // =========== 生命周期 ===========
@@ -133,14 +133,15 @@ export default function Employees() {
                 /**
                  * 项目经理的数据可见性规则：
                  * - 可以看到自己
-                 * - 可以看到同小组的普通员工（下属）
-                 * - 不能看到其他小组、其他经理、管理员
+                 * - 可以看到同分公司的普通员工
+                 * - 可以看到同分公司的其他项目经理
+                 * - 不能看到超级管理员
                  */
                 usersWithRelations = usersWithRelations.filter(u =>
-                    // 条件1：是自己
-                    u.id === currentUser.id ||
-                    // 条件2：同小组的普通员工
-                    (u.group_id === currentUser.group_id && u.role === 'employee')
+                    // 排除超级管理员
+                    u.role !== 'admin' &&
+                    // 同分公司
+                    u.branch_id === currentUser.branch_id
                 )
             }
             // admin 无需过滤，可以看到所有员工
@@ -293,8 +294,10 @@ export default function Employees() {
         if (currentUser.role === 'manager') {
             // 不能编辑自己
             if (targetUser.id === currentUser.id) return false
-            // 只能编辑同组的普通员工（下属）
-            return targetUser.group_id === currentUser.group_id && targetUser.role === 'employee'
+            // 不能编辑其他项目经理
+            if (targetUser.role === 'manager') return false
+            // 只能编辑同分公司的普通员工
+            return targetUser.branch_id === currentUser.branch_id && targetUser.role === 'employee'
         }
 
         return false
@@ -308,8 +311,12 @@ export default function Employees() {
         if (currentUser.role === 'admin') return true
 
         if (currentUser.role === 'manager') {
+            // 不能删除自己
             if (targetUser.id === currentUser.id) return false
-            return targetUser.group_id === currentUser.group_id && targetUser.role === 'employee'
+            // 不能删除其他项目经理
+            if (targetUser.role === 'manager') return false
+            // 只能删除同分公司的普通员工
+            return targetUser.branch_id === currentUser.branch_id && targetUser.role === 'employee'
         }
 
         return false
@@ -323,8 +330,12 @@ export default function Employees() {
         if (currentUser.role === 'admin') return true
 
         if (currentUser.role === 'manager') {
+            // 不能重置自己的密码
             if (targetUser.id === currentUser.id) return false
-            return targetUser.group_id === currentUser.group_id && targetUser.role === 'employee'
+            // 不能重置其他项目经理的密码
+            if (targetUser.role === 'manager') return false
+            // 只能重置同分公司普通员工的密码
+            return targetUser.branch_id === currentUser.branch_id && targetUser.role === 'employee'
         }
 
         return false
@@ -361,7 +372,6 @@ export default function Employees() {
             <header className="page-header">
                 <div>
                     <h1>员工管理</h1>
-                    <p>管理所有员工信息和角色</p>
                 </div>
                 {/* 只有 admin 可以添加员工 */}
                 {currentUser?.role === 'admin' && (
@@ -369,14 +379,16 @@ export default function Employees() {
                 )}
             </header>
 
-            {/* 筛选栏 */}
+            {/* 筛选栏 - 项目经理不显示子公司选择器 */}
             <div className="filter-bar">
-                <select value={filterBranch} onChange={e => { setFilterBranch(e.target.value); setFilterGroup('') }}>
-                    <option value="">全部子公司</option>
-                    {branches.map(b => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                </select>
+                {currentUser?.role === 'admin' && (
+                    <select value={filterBranch} onChange={e => { setFilterBranch(e.target.value); setFilterGroup('') }}>
+                        <option value="">全部子公司</option>
+                        {branches.map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                    </select>
+                )}
                 <select value={filterGroup} onChange={e => setFilterGroup(e.target.value)}>
                     <option value="">全部小组</option>
                     {availableGroups.map(g => (

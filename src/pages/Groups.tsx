@@ -28,6 +28,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Group, Branch, User } from '../types/database'
+import { useAuth } from '../contexts/AuthContext'
 import './PageStyles.css'
 
 // ============================================================================
@@ -35,6 +36,9 @@ import './PageStyles.css'
 // ============================================================================
 
 export default function Groups() {
+    // =========== 获取当前用户信息 ===========
+    const { user: currentUser } = useAuth()
+
     // =========== 状态定义 ===========
 
     /**
@@ -64,8 +68,8 @@ export default function Groups() {
     /** 表单数据 */
     const [formData, setFormData] = useState({ name: '', branch_id: '', manager_id: '' })
 
-    /** 筛选条件：子公司 */
-    const [filterBranch, setFilterBranch] = useState('')
+    /** 筛选条件：子公司 - 项目经理默认筛选自己的分公司 */
+    const [filterBranch, setFilterBranch] = useState(currentUser?.role === 'manager' ? (currentUser?.branch_id || '') : '')
 
     // =========== 生命周期 ===========
 
@@ -120,11 +124,16 @@ export default function Groups() {
              * 使用展开运算符 ...group 保留原有属性
              * 添加 branch 和 manager 关联对象
              */
-            const groupsWithRelations = (groupsRes.data || []).map(group => ({
+            let groupsWithRelations = (groupsRes.data || []).map(group => ({
                 ...group,
                 branch: group.branch_id ? branchMap.get(group.branch_id) : undefined,
                 manager: group.manager_id ? managerMap.get(group.manager_id) : undefined,
             }))
+
+            // ===== 数据隔离：项目经理只能看本分公司的小组 =====
+            if (currentUser?.role === 'manager') {
+                groupsWithRelations = groupsWithRelations.filter(g => g.branch_id === currentUser.branch_id)
+            }
 
             // 更新状态
             setGroups(groupsWithRelations)
@@ -214,20 +223,24 @@ export default function Groups() {
             <header className="page-header">
                 <div>
                     <h1>小组管理</h1>
-                    <p>管理各子公司下的工作小组</p>
                 </div>
-                <button className="btn-primary" onClick={() => openModal()}>➕ 添加小组</button>
+                {/* admin 和 manager 都可以添加小组 */}
+                {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
+                    <button className="btn-primary" onClick={() => openModal()}>➕ 添加小组</button>
+                )}
             </header>
 
-            {/* 筛选栏 */}
-            <div className="filter-bar">
-                <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}>
-                    <option value="">全部子公司</option>
-                    {branches.map(b => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                </select>
-            </div>
+            {/* 筛选栏 - 项目经理不显示子公司选择器 */}
+            {currentUser?.role === 'admin' && (
+                <div className="filter-bar">
+                    <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}>
+                        <option value="">全部子公司</option>
+                        {branches.map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
 
             {/* 数据表格 */}
             <div className="table-container">
@@ -265,8 +278,13 @@ export default function Groups() {
                                     <td>{group.manager?.name || '-'}</td>
                                     <td>{new Date(group.created_at).toLocaleDateString('zh-CN')}</td>
                                     <td>
-                                        <button className="btn-icon" onClick={() => openModal(group)}>✏️</button>
-                                        <button className="btn-icon danger" onClick={() => handleDelete(group.id)}>🗑️</button>
+                                        {/* admin 和 manager 都可以编辑删除（数据已按分公司隔离） */}
+                                        {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
+                                            <>
+                                                <button className="btn-icon" onClick={() => openModal(group)}>✏️</button>
+                                                <button className="btn-icon danger" onClick={() => handleDelete(group.id)}>🗑️</button>
+                                            </>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
