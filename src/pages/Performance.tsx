@@ -36,6 +36,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import type { PerformanceRecord, Branch, Group, User } from '../types/database'
+import { useAuth } from '../contexts/AuthContext'
 import './PageStyles.css'
 
 // ============================================================================
@@ -43,6 +44,9 @@ import './PageStyles.css'
 // ============================================================================
 
 export default function Performance() {
+    // =========== 获取当前用户信息 ===========
+    const { user: currentUser } = useAuth()
+
     // =========== 状态定义 ===========
 
     /**
@@ -68,9 +72,9 @@ export default function Performance() {
     /** 选中的记录（用于详情展示） */
     const [selectedRecord, setSelectedRecord] = useState<PerformanceRecord | null>(null)
 
-    /** 筛选条件 */
+    /** 筛选条件 - 项目经理默认筛选自己的分公司 */
     const [filterPeriod, setFilterPeriod] = useState('')
-    const [filterBranch, setFilterBranch] = useState('')
+    const [filterBranch, setFilterBranch] = useState(currentUser?.role === 'manager' ? (currentUser?.branch_id || '') : '')
     const [filterGroup, setFilterGroup] = useState('')
 
     // =========== 周期选项生成 ===========
@@ -125,7 +129,12 @@ export default function Performance() {
                 supabase.from('groups').select('*').order('name'),
             ])
 
-            setRecords(recordsRes.data || [])
+            let recordsData = recordsRes.data || []
+            // ===== 数据隔离：项目经理只能看本分公司的绩效记录 =====
+            if (currentUser?.role === 'manager') {
+                recordsData = recordsData.filter(r => r.branch_id === currentUser.branch_id)
+            }
+            setRecords(recordsData)
             setBranches(branchesRes.data || [])
             setGroups(groupsRes.data || [])
         } catch (error) {
@@ -199,13 +208,15 @@ export default function Performance() {
                         <option key={p} value={p}>{p}</option>
                     ))}
                 </select>
-                {/* 子公司筛选 */}
-                <select value={filterBranch} onChange={e => { setFilterBranch(e.target.value); setFilterGroup('') }}>
-                    <option value="">全部子公司</option>
-                    {branches.map(b => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                </select>
+                {/* 子公司筛选 - 项目经理不显示 */}
+                {currentUser?.role === 'admin' && (
+                    <select value={filterBranch} onChange={e => { setFilterBranch(e.target.value); setFilterGroup('') }}>
+                        <option value="">全部子公司</option>
+                        {branches.map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                    </select>
+                )}
                 {/* 小组筛选 */}
                 <select value={filterGroup} onChange={e => setFilterGroup(e.target.value)}>
                     <option value="">全部小组</option>

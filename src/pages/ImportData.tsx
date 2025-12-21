@@ -16,15 +16,19 @@
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Branch, User, QualityInspection } from '../types/database'
+import { useAuth } from '../contexts/AuthContext'
 import './PageStyles.css'
 
 interface ExcelRow { 日期: string; 标注人员姓名: string; 所属topic: string; 批次名称: string; 被质检题目数量: number; 错误题目数量: number }
 
 export default function ImportData() {
+    const { user: currentUser } = useAuth()
+
     const [branches, setBranches] = useState<Branch[]>([])
     const [users, setUsers] = useState<User[]>([])
     const [recentImports, setRecentImports] = useState<QualityInspection[]>([])
-    const [selectedBranch, setSelectedBranch] = useState('')
+    // 项目经理默认选择自己的分公司
+    const [selectedBranch, setSelectedBranch] = useState(currentUser?.role === 'manager' ? (currentUser?.branch_id || '') : '')
     const [importing, setImporting] = useState(false)
     const [importResult, setImportResult] = useState<{ success: number; failed: number; errors: string[] } | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null) // useRef 用于获取 DOM 元素引用
@@ -132,10 +136,13 @@ export default function ImportData() {
                     <h3>📥 导入质检数据</h3>
                     <p className="import-hint">列格式：日期、标注人员姓名、所属topic、批次名称、被质检题目数量、错误题目数量</p>
                     <div className="import-controls">
-                        <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} className="branch-select">
-                            <option value="">选择子公司 *</option>
-                            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                        </select>
+                        {/* 项目经理不显示子公司选择器 */}
+                        {currentUser?.role === 'admin' && (
+                            <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} className="branch-select">
+                                <option value="">选择子公司 *</option>
+                                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                            </select>
+                        )}
                         <input ref={fileInputRef} type="file" accept=".csv,.txt,.tsv" onChange={handleFileUpload} style={{ display: 'none' }} />
                         <button className="btn-primary" onClick={() => fileInputRef.current?.click()} disabled={importing || !selectedBranch}>
                             {importing ? '导入中...' : '📁 选择文件'}
