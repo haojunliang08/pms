@@ -3,8 +3,8 @@
  * 
  * 【功能】
  * - 展示所有质检记录（准确率 = (质检数-错误数)/质检数）
- * - 达标标准：准确率 >= 95%（绿色显示），否则红色
- * - 数据可见性：admin全部 / manager本子公司 / employee本小组
+ * - 达标标准：准确率 >= 95%
+ * - 支持修改和删除（admin/manager）
  */
 
 import { useState, useEffect } from 'react'
@@ -13,7 +13,7 @@ import { useAuth } from '../contexts/AuthContext'
 import type { QualityInspection, Branch, Group, User } from '../types/database'
 import './PageStyles.css'
 
-const ACCURACY_THRESHOLD = 95 // 准确率达标阈值
+const ACCURACY_THRESHOLD = 95
 
 interface ExtendedQCRecord extends QualityInspection {
     user?: User & { group?: Group }
@@ -28,7 +28,19 @@ export default function QCAccuracy() {
     const [employees, setEmployees] = useState<User[]>([])
     const [loading, setLoading] = useState(true)
 
-    // 默认日期范围：当月1号 到 今天
+    // 编辑弹窗
+    const [showEditModal, setShowEditModal] = useState(false)
+    const [editRecord, setEditRecord] = useState<{
+        id: string
+        inspection_date: string
+        topic: string
+        batch_name: string
+        inspected_count: number
+        error_count: number
+    } | null>(null)
+    const [saving, setSaving] = useState(false)
+
+    // 日期筛选
     const today = new Date()
     const firstDayOfMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
@@ -55,11 +67,9 @@ export default function QCAccuracy() {
             setGroups(groupsRes.data || [])
             setEmployees(employeesRes.data || [])
 
-            // 构建查询，根据角色添加过滤条件
-            // 使用 groups!users_group_id_fkey 指定外键关系，避免歧义
             let query = supabase.from('quality_inspections')
                 .select(`*, user:users(id, name, email, group_id, branch_id, group:groups!users_group_id_fkey(id, name, branch_id)), branch:branches(id, name)`)
-                .order('inspection_date', { ascending: true })  // 按日期升序排列
+                .order('inspection_date', { ascending: true })
 
             if (currentUser.role === 'manager' && currentUser.branch_id) {
                 query = query.eq('branch_id', currentUser.branch_id)
@@ -69,17 +79,67 @@ export default function QCAccuracy() {
             }
 
             const { data, error } = await query
-            if (error) {
-                console.error('查询错误:', error)
-            }
+            if (error) console.error('查询错误:', error)
             setRecords(data || [])
         } finally { setLoading(false) }
     }
 
-    // 计算准确率
     const calcAccuracy = (inspected: number, errors: number) => inspected > 0 ? ((inspected - errors) / inspected) * 100 : 0
 
-    // 应用筛选
+    // 打开编辑弹窗
+    function openEditModal(record: ExtendedQCRecord) {
+        setEditRecord({
+            id: record.id,
+            inspection_date: record.inspection_date,
+            topic: record.topic || '',
+            batch_name: record.batch_name || '',
+            inspected_count: record.inspected_count,
+            error_count: record.error_count,
+        })
+        setShowEditModal(true)
+    }
+
+    // 保存编辑
+    async function handleSaveEdit() {
+        if (!editRecord) return
+        setSaving(true)
+        try {
+            const { error } = await supabase
+                .from('quality_inspections')
+                .update({
+                    inspection_date: editRecord.inspection_date,
+                    topic: editRecord.topic,
+                    batch_name: editRecord.batch_name,
+                    inspected_count: editRecord.inspected_count,
+                    error_count: editRecord.error_count,
+                })
+                .eq('id', editRecord.id)
+
+            if (error) throw error
+            alert('保存成功')
+            setShowEditModal(false)
+            fetchData()
+        } catch (error) {
+            console.error('保存失败:', error)
+            alert('保存失败')
+        } finally { setSaving(false) }
+    }
+
+    // 删除记录
+    async function handleDelete(id: string) {
+        if (!confirm('确定要删除这条记录吗？')) return
+        try {
+            const { error } = await supabase.from('quality_inspections').delete().eq('id', id)
+            if (error) throw error
+            alert('删除成功')
+            fetchData()
+        } catch (error) {
+            console.error('删除失败:', error)
+            alert('删除失败')
+        }
+    }
+
+    // 筛选
     let filteredRecords = records
     if (filterDateStart) filteredRecords = filteredRecords.filter(r => r.inspection_date >= filterDateStart)
     if (filterDateEnd) filteredRecords = filteredRecords.filter(r => r.inspection_date <= filterDateEnd)
@@ -89,6 +149,9 @@ export default function QCAccuracy() {
 
     const availableGroups = filterBranch ? groups.filter(g => g.branch_id === filterBranch) : groups
     const availableEmployees = filterGroup ? employees.filter(e => e.group_id === filterGroup) : employees
+
+    // 权限判断
+    const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'manager'
 
     return (
         <div className="page-container">
@@ -106,15 +169,74 @@ export default function QCAccuracy() {
                     <div className="empty-state"><span className="empty-icon">🎯</span><h3>暂无质检数据</h3></div>
                 ) : (
                     <table className="data-table">
-                        <thead><tr><th>日期</th><th>员工</th><th>子公司</th><th>小组</th><th>Topic</th><th>批次</th><th>质检数</th><th>错误数</th><th>准确率</th><th>状态</th></tr></thead>
+                        <thead><tr>
+                            <th>日期</th><th>员工</th><th>子公司</th><th>小组</th><th>Topic</th><th>批次</th>
+                            <th>质检数</th><th>错误数</th><th>准确率</th><th>状态</th>
+                            {canEdit && <th>操作</th>}
+                        </tr></thead>
                         <tbody>{filteredRecords.map((r) => {
                             const acc = calcAccuracy(r.inspected_count, r.error_count)
-                            return (<tr key={r.id}><td><span className="badge">{r.inspection_date}</span></td><td>{r.user?.name || '-'}</td><td>{r.branch?.name || '-'}</td><td>{r.user?.group?.name || '-'}</td><td>{r.topic || '-'}</td><td>{r.batch_name || '-'}</td><td>{r.inspected_count}</td><td>{r.error_count}</td><td className={acc >= ACCURACY_THRESHOLD ? 'accuracy-pass' : 'accuracy-fail'}><strong>{acc.toFixed(1)}%</strong></td><td><span className={`badge ${acc >= ACCURACY_THRESHOLD ? 'badge-success' : 'badge-danger'}`}>{acc >= ACCURACY_THRESHOLD ? '达标' : '不达标'}</span></td></tr>)
+                            return (
+                                <tr key={r.id}>
+                                    <td><span className="badge">{r.inspection_date}</span></td>
+                                    <td>{r.user?.name || '-'}</td>
+                                    <td>{r.branch?.name || '-'}</td>
+                                    <td>{r.user?.group?.name || '-'}</td>
+                                    <td>{r.topic || '-'}</td>
+                                    <td>{r.batch_name || '-'}</td>
+                                    <td>{r.inspected_count}</td>
+                                    <td>{r.error_count}</td>
+                                    <td className={acc >= ACCURACY_THRESHOLD ? 'accuracy-pass' : 'accuracy-fail'}><strong>{acc.toFixed(1)}%</strong></td>
+                                    <td><span className={`badge ${acc >= ACCURACY_THRESHOLD ? 'badge-success' : 'badge-danger'}`}>{acc >= ACCURACY_THRESHOLD ? '达标' : '不达标'}</span></td>
+                                    {canEdit && (
+                                        <td>
+                                            <button className="btn-icon" onClick={() => openEditModal(r)}>✏️</button>
+                                            <button className="btn-icon danger" onClick={() => handleDelete(r.id)}>🗑️</button>
+                                        </td>
+                                    )}
+                                </tr>
+                            )
                         })}</tbody>
                     </table>
                 )}
             </div>
             {!loading && filteredRecords.length > 0 && <div className="stats-summary"><p>共 <strong>{filteredRecords.length}</strong> 条 | 达标 <strong style={{ color: 'var(--success)' }}>{filteredRecords.filter(r => calcAccuracy(r.inspected_count, r.error_count) >= ACCURACY_THRESHOLD).length}</strong> | 不达标 <strong style={{ color: 'var(--danger)' }}>{filteredRecords.filter(r => calcAccuracy(r.inspected_count, r.error_count) < ACCURACY_THRESHOLD).length}</strong></p></div>}
+
+            {/* 编辑弹窗 */}
+            {showEditModal && editRecord && (
+                <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+                        <h2>✏️ 修改质检记录</h2>
+                        <div className="form-group">
+                            <label>日期</label>
+                            <input type="date" value={editRecord.inspection_date} onChange={e => setEditRecord(prev => prev ? { ...prev, inspection_date: e.target.value } : null)} />
+                        </div>
+                        <div className="form-group">
+                            <label>Topic</label>
+                            <input type="text" value={editRecord.topic} onChange={e => setEditRecord(prev => prev ? { ...prev, topic: e.target.value } : null)} />
+                        </div>
+                        <div className="form-group">
+                            <label>批次名称</label>
+                            <input type="text" value={editRecord.batch_name} onChange={e => setEditRecord(prev => prev ? { ...prev, batch_name: e.target.value } : null)} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                            <div className="form-group">
+                                <label>质检数</label>
+                                <input type="number" value={editRecord.inspected_count} onChange={e => setEditRecord(prev => prev ? { ...prev, inspected_count: Number(e.target.value) } : null)} />
+                            </div>
+                            <div className="form-group">
+                                <label>错误数</label>
+                                <input type="number" value={editRecord.error_count} onChange={e => setEditRecord(prev => prev ? { ...prev, error_count: Number(e.target.value) } : null)} />
+                            </div>
+                        </div>
+                        <div className="form-actions" style={{ marginTop: '20px' }}>
+                            <button type="button" className="btn-secondary" onClick={() => setShowEditModal(false)}>取消</button>
+                            <button type="button" className="btn-primary" onClick={handleSaveEdit} disabled={saving}>{saving ? '保存中...' : '保存'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <style>{`.accuracy-pass { color: var(--success, #10b981); font-weight: 600; } .accuracy-fail { color: var(--danger, #ef4444); font-weight: 600; } .filter-group { display: flex; flex-direction: column; gap: 4px; } .filter-group label { font-size: 12px; color: rgba(255,255,255,0.6); } .filter-group input[type="date"] { padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; } .stats-summary { margin-top: 16px; padding: 12px 16px; background: rgba(255,255,255,0.03); border-radius: 8px; text-align: center; color: rgba(255,255,255,0.8); }`}</style>
         </div>
     )
