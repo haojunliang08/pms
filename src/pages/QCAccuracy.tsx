@@ -27,9 +27,15 @@ export default function QCAccuracy() {
     const [groups, setGroups] = useState<Group[]>([])
     const [employees, setEmployees] = useState<User[]>([])
     const [loading, setLoading] = useState(true)
-    const [filterDateStart, setFilterDateStart] = useState('')
-    const [filterDateEnd, setFilterDateEnd] = useState('')
-    const [filterBranch, setFilterBranch] = useState('')
+
+    // 默认日期范围：当月1号 到 今天
+    const today = new Date()
+    const firstDayOfMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
+    const [filterDateStart, setFilterDateStart] = useState(firstDayOfMonth)
+    const [filterDateEnd, setFilterDateEnd] = useState(todayStr)
+    const [filterBranch, setFilterBranch] = useState(currentUser?.role === 'manager' ? (currentUser?.branch_id || '') : '')
     const [filterGroup, setFilterGroup] = useState('')
     const [filterEmployee, setFilterEmployee] = useState('')
 
@@ -50,9 +56,10 @@ export default function QCAccuracy() {
             setEmployees(employeesRes.data || [])
 
             // 构建查询，根据角色添加过滤条件
+            // 使用 groups!users_group_id_fkey 指定外键关系，避免歧义
             let query = supabase.from('quality_inspections')
-                .select(`*, user:users(id, name, email, group_id, branch_id, group:groups(id, name, branch_id)), branch:branches(id, name)`)
-                .order('inspection_date', { ascending: false })
+                .select(`*, user:users(id, name, email, group_id, branch_id, group:groups!users_group_id_fkey(id, name, branch_id)), branch:branches(id, name)`)
+                .order('inspection_date', { ascending: true })  // 按日期升序排列
 
             if (currentUser.role === 'manager' && currentUser.branch_id) {
                 query = query.eq('branch_id', currentUser.branch_id)
@@ -61,7 +68,10 @@ export default function QCAccuracy() {
                 if (groupMembers?.length) query = query.in('user_id', groupMembers.map(m => m.id))
             }
 
-            const { data } = await query
+            const { data, error } = await query
+            if (error) {
+                console.error('查询错误:', error)
+            }
             setRecords(data || [])
         } finally { setLoading(false) }
     }
@@ -89,7 +99,7 @@ export default function QCAccuracy() {
                 {currentUser?.role === 'admin' && <select value={filterBranch} onChange={e => { setFilterBranch(e.target.value); setFilterGroup(''); setFilterEmployee('') }}><option value="">全部子公司</option>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select>}
                 {currentUser?.role !== 'employee' && <select value={filterGroup} onChange={e => { setFilterGroup(e.target.value); setFilterEmployee('') }}><option value="">全部小组</option>{availableGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select>}
                 <select value={filterEmployee} onChange={e => setFilterEmployee(e.target.value)}><option value="">全部员工</option>{availableEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
-                <button className="btn-secondary" onClick={() => { setFilterDateStart(''); setFilterDateEnd(''); setFilterBranch(''); setFilterGroup(''); setFilterEmployee('') }}>清除筛选</button>
+                <button className="btn-secondary" onClick={() => { setFilterDateStart(firstDayOfMonth); setFilterDateEnd(todayStr); setFilterBranch(currentUser?.role === 'manager' ? (currentUser?.branch_id || '') : ''); setFilterGroup(''); setFilterEmployee('') }}>重置筛选</button>
             </div>
             <div className="table-container">
                 {loading ? <div className="loading">加载中...</div> : filteredRecords.length === 0 ? (
