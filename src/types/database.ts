@@ -148,10 +148,8 @@ export interface PerformanceRecord {
     required_attendance: number // 应出勤天数（如：23）
     // 出勤率 = actual_attendance / required_attendance
 
-    // ========== 标注数据 ==========
-    annotation_count: number    // 当月完成的标注数量
-    annotation_target: number   // 标注目标数量
-    // 完成率 = annotation_count / annotation_target
+    // ========== 标注得分 ==========
+    annotation_score: number        // 标注得分（0-100分，直接评分）
 
     // ========== 现场表现 ==========
     onsite_performance: number  // 现场表现评分，1-5分
