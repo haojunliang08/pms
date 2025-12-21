@@ -2,13 +2,13 @@
  * 数据导入页面 - 导入 Excel 质检数据
  * 
  * 【功能】
- * - 上传 CSV/TSV 文件导入质检数据
+ * - 支持上传 Excel (.xlsx/.xls) 和 CSV/TXT 文件
  * - 支持格式：日期、标注人员姓名、所属topic、批次名称、被质检题目数量、错误题目数量
  * - 自动合并同批次数据
  * 
  * 【技术点】
+ * - xlsx 库解析 Excel 文件
  * - FileReader API 读取文件
- * - CSV 解析逻辑
  * - 日期格式转换（支持多种格式）
  * - Supabase upsert（有则更新，无则插入）
  */
@@ -17,6 +17,7 @@ import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Branch, User, QualityInspection } from '../types/database'
 import { useAuth } from '../contexts/AuthContext'
+import * as XLSX from 'xlsx'
 import './PageStyles.css'
 
 interface ExcelRow { 日期: string; 标注人员姓名: string; 所属topic: string; 批次名称: string; 被质检题目数量: number; 错误题目数量: number }
@@ -55,8 +56,8 @@ export default function ImportData() {
         setImportResult(null)
 
         try {
-            const text = await readFileAsText(file) // 读取文件内容
-            const rows = parseCSV(text)              // 解析 CSV
+            // 根据文件类型选择解析方式
+            const rows = await parseFile(file)
             const nameToUser = new Map(users.filter(u => u.branch_id === selectedBranch).map(u => [u.name, u]))
 
             let success = 0, failed = 0
@@ -88,8 +89,58 @@ export default function ImportData() {
 
             setImportResult({ success, failed, errors: errors.slice(0, 10) })
             fetchData()
-        } catch { alert('导入失败，请检查文件格式') }
+        } catch (err) {
+            console.error('导入错误:', err)
+            alert('导入失败，请检查文件格式')
+        }
         finally { setImporting(false); if (fileInputRef.current) fileInputRef.current.value = '' }
+    }
+
+    /**
+     * 解析文件（支持 Excel 和 CSV/TXT）
+     */
+    async function parseFile(file: File): Promise<ExcelRow[]> {
+        const fileName = file.name.toLowerCase()
+
+        // Excel 文件 (.xlsx, .xls)
+        if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+            return parseExcel(file)
+        }
+
+        // CSV/TXT 文件
+        const text = await readFileAsText(file)
+        return parseCSV(text)
+    }
+
+    /**
+     * 解析 Excel 文件
+     */
+    async function parseExcel(file: File): Promise<ExcelRow[]> {
+        const buffer = await file.arrayBuffer()
+        const workbook = XLSX.read(buffer, { type: 'array' })
+        const sheetName = workbook.SheetNames[0]
+        const sheet = workbook.Sheets[sheetName]
+
+        // 转换为二维数组
+        const data: (string | number)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 })
+        if (data.length === 0) return []
+
+        // 判断第一行是否是表头
+        let dataStartIndex = 0
+        const firstValue = String(data[0][0] || '')
+        if (firstValue === '日期' || !isValidDateFormat(firstValue)) {
+            dataStartIndex = 1
+        }
+
+        // 按列位置解析
+        return data.slice(dataStartIndex).filter(row => row.length > 0).map(row => ({
+            日期: String(row[0] || ''),
+            标注人员姓名: String(row[1] || ''),
+            所属topic: String(row[2] || ''),
+            批次名称: String(row[3] || ''),
+            被质检题目数量: Number(row[4]) || 0,
+            错误题目数量: Number(row[5]) || 0,
+        }))
     }
 
     // 读取文件为文本（Promise 包装 FileReader）
@@ -102,27 +153,70 @@ export default function ImportData() {
         })
     }
 
-    // 解析 CSV/TSV（支持逗号和 Tab 分隔）
+    /**
+     * 解析 CSV/TSV（支持逗号、Tab、多空格分隔）
+     * 
+     * 数据格式要求（按列顺序）：
+     * 日期 | 标注人员姓名 | 所属topic | 批次名称 | 被质检题目数量 | 错误题目数量
+     * 
+     * 如果第一行是表头（以"日期"开头），则自动跳过
+     */
     function parseCSV(text: string): ExcelRow[] {
-        const lines = text.trim().split('\n')
-        if (lines.length < 2) return []
-        const headers = lines[0].split(/[,\t]/).map(h => h.trim())
-        return lines.slice(1).map(line => {
-            const values = line.split(/[,\t]/).map(v => v.trim())
-            const row: Record<string, string | number> = {}
-            headers.forEach((h, i) => row[h] = values[i] || '')
-            return row as unknown as ExcelRow
+        const lines = text.trim().split('\n').filter(line => line.trim())
+        if (lines.length === 0) return []
+
+        // 判断第一行是否是表头（如果第一个字段是"日期"或不是有效日期格式，则认为是表头）
+        let dataStartIndex = 0
+        const firstLineValues = lines[0].split(/[,\t]+|\s{2,}/).map(v => v.trim()).filter(Boolean)
+        const firstValue = firstLineValues[0]
+        if (firstValue === '日期' || !isValidDateFormat(firstValue)) {
+            dataStartIndex = 1  // 跳过表头
+        }
+
+        // 按列位置解析数据
+        return lines.slice(dataStartIndex).map(line => {
+            // 支持逗号、Tab、多个空格作为分隔符
+            const values = line.split(/[,\t]+|\s{2,}/).map(v => v.trim()).filter(Boolean)
+            return {
+                日期: values[0] || '',
+                标注人员姓名: values[1] || '',
+                所属topic: values[2] || '',
+                批次名称: values[3] || '',
+                被质检题目数量: Number(values[4]) || 0,
+                错误题目数量: Number(values[5]) || 0,
+            } as ExcelRow
         })
     }
 
-    // 解析日期（支持 YYYY-MM-DD、YYYY/M/D、Excel日期序号）
+    // 检查是否是有效的日期格式
+    function isValidDateFormat(str: string): boolean {
+        if (!str) return false
+        // 支持 YYYY-MM-DD, YYYY/M/D, YYYY.M.D, Excel日期序号
+        return /^\d{4}[-\/\.]\d{1,2}[-\/\.]\d{1,2}$/.test(str) || /^\d+$/.test(str)
+    }
+
+    /**
+     * 解析日期（支持多种格式）
+     * - YYYY-MM-DD
+     * - YYYY/M/D
+     * - YYYY.M.D
+     * - Excel日期序号
+     */
     function parseDate(dateStr: string): string | null {
         if (!dateStr) return null
+        // 标准格式 YYYY-MM-DD
         if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr
+        // 斜杠格式 YYYY/M/D
         if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(dateStr)) {
             const [y, m, d] = dateStr.split('/')
             return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
         }
+        // 点号格式 YYYY.M.D
+        if (/^\d{4}\.\d{1,2}\.\d{1,2}$/.test(dateStr)) {
+            const [y, m, d] = dateStr.split('.')
+            return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+        }
+        // Excel日期序号
         const num = Number(dateStr)
         if (!isNaN(num) && num > 0) return new Date((num - 25569) * 86400 * 1000).toISOString().split('T')[0]
         return null
@@ -143,7 +237,7 @@ export default function ImportData() {
                                 {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                             </select>
                         )}
-                        <input ref={fileInputRef} type="file" accept=".csv,.txt,.tsv" onChange={handleFileUpload} style={{ display: 'none' }} />
+                        <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv,.txt,.tsv" onChange={handleFileUpload} style={{ display: 'none' }} />
                         <button className="btn-primary" onClick={() => fileInputRef.current?.click()} disabled={importing || !selectedBranch}>
                             {importing ? '导入中...' : '📁 选择文件'}
                         </button>
