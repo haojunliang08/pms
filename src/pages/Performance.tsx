@@ -60,8 +60,9 @@ export default function Performance() {
 
     // ========== 快捷设置值 ==========
     const [batchAttendance, setBatchAttendance] = useState(22)
-    const [batchAnnotation, setBatchAnnotation] = useState(80)
     const [batchOnsite, setBatchOnsite] = useState(3)
+    const [batchAnnotation, setBatchAnnotation] = useState(80)
+    const [batchMinorError, setBatchMinorError] = useState(0)
 
     // ========== 编辑绩效状态 ==========
     const [editRecord, setEditRecord] = useState<{
@@ -133,32 +134,22 @@ export default function Performance() {
         const lastDay = new Date(year, month, 0).getDate()  // 获取该月最后一天
         const periodEnd = `${period}-${String(lastDay).padStart(2, '0')}`
 
-        const [qcRes, errorRes] = await Promise.all([
-            supabase.from('quality_inspections')
-                .select('user_id, inspected_count, error_count')
-                .gte('inspection_date', periodStart)
-                .lte('inspection_date', periodEnd)
-                .in('user_id', userIds),
-            supabase.from('minor_error_records')
-                .select('user_id')
-                .eq('period', period)
-                .in('user_id', userIds)
-        ])
+        // 只获取质检数据，低级错误改为手动输入
+        const { data: qcData } = await supabase.from('quality_inspections')
+            .select('user_id, inspected_count, error_count')
+            .gte('inspection_date', periodStart)
+            .lte('inspection_date', periodEnd)
+            .in('user_id', userIds)
 
         const qcSummary = new Map<string, { inspected: number; errors: number }>()
-        qcRes.data?.forEach(item => {
+        qcData?.forEach(item => {
             const existing = qcSummary.get(item.user_id) || { inspected: 0, errors: 0 }
             existing.inspected += item.inspected_count
             existing.errors += item.error_count
             qcSummary.set(item.user_id, existing)
         })
 
-        const errorCounts = new Map<string, number>()
-        errorRes.data?.forEach(item => {
-            errorCounts.set(item.user_id, (errorCounts.get(item.user_id) || 0) + 1)
-        })
-
-        return { qcSummary, errorCounts }
+        return { qcSummary }
     }
 
     // ========== 生成绩效相关 ==========
@@ -179,7 +170,7 @@ export default function Performance() {
         setGenerateGroup(groupId)
 
         const groupEmployees = employees.filter(e => e.group_id === groupId)
-        const { qcSummary, errorCounts } = await fetchQCData(groupEmployees.map(e => e.id), generatePeriod)
+        const { qcSummary } = await fetchQCData(groupEmployees.map(e => e.id), generatePeriod)
 
         const dataList: EmployeeData[] = groupEmployees.map(emp => {
             const qc = qcSummary.get(emp.id) || { inspected: 0, errors: 0 }
@@ -193,7 +184,7 @@ export default function Performance() {
                 onsite_performance: batchOnsite,
                 total_inspected: qc.inspected,
                 total_errors: qc.errors,
-                minor_error_count: errorCounts.get(emp.id) || 0,
+                minor_error_count: 0,  // 默认为0，手动输入
             }
         })
 
@@ -288,14 +279,13 @@ export default function Performance() {
     async function handleRefreshQCData() {
         if (!editRecord) return
 
-        const { qcSummary, errorCounts } = await fetchQCData([editRecord.user_id], editRecord.period)
+        const { qcSummary } = await fetchQCData([editRecord.user_id], editRecord.period)
         const qc = qcSummary.get(editRecord.user_id) || { inspected: 0, errors: 0 }
 
         setEditRecord(prev => prev ? {
             ...prev,
             total_inspected: qc.inspected,
             total_errors: qc.errors,
-            minor_error_count: errorCounts.get(editRecord.user_id) || 0,
         } : null)
 
         alert('质检数据已刷新')
@@ -444,7 +434,7 @@ export default function Performance() {
                         <thead>
                             <tr>
                                 <th>周期</th><th>员工</th><th>子公司</th><th>小组</th>
-                                <th>出勤</th><th>现场表现</th><th>标注得分</th><th>准确率</th><th>低级错误</th><th>得分</th><th>等级</th><th>操作</th>
+                                <th>出勤</th><th>现场表现</th><th>标注得分</th><th>低级错误</th><th>准确率</th><th>得分</th><th>等级</th><th>操作</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -463,8 +453,8 @@ export default function Performance() {
                                         <td>{record.actual_attendance}/{record.required_attendance}</td>
                                         <td>{record.onsite_performance}</td>
                                         <td>{record.annotation_score}</td>
-                                        <td>{accuracy}%</td>
                                         <td>{record.minor_error_count}</td>
+                                        <td>{accuracy}%</td>
                                         <td className="score-cell">{record.final_score?.toFixed(1) || '-'}</td>
                                         <td><span className={`badge ${level.class}`}>{level.label}</span></td>
                                         <td>
@@ -574,14 +564,19 @@ export default function Performance() {
                                             <button className="btn-secondary" style={{ padding: '4px 8px', fontSize: '12px' }} onClick={applyBatchAttendance}>应用</button>
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>现场表现:</span>
+                                            <input type="number" min="1" max="5" step="0.5" value={batchOnsite} onChange={e => setBatchOnsite(Number(e.target.value))} style={{ width: '50px', padding: '4px' }} />
+                                            <button className="btn-secondary" style={{ padding: '4px 8px', fontSize: '12px' }} onClick={applyBatchOnsite}>应用</button>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                             <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>标注得分:</span>
                                             <input type="number" min="0" max="100" value={batchAnnotation} onChange={e => setBatchAnnotation(Number(e.target.value))} style={{ width: '50px', padding: '4px' }} />
                                             <button className="btn-secondary" style={{ padding: '4px 8px', fontSize: '12px' }} onClick={applyBatchAnnotation}>应用</button>
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>现场表现:</span>
-                                            <input type="number" min="1" max="5" step="0.5" value={batchOnsite} onChange={e => setBatchOnsite(Number(e.target.value))} style={{ width: '50px', padding: '4px' }} />
-                                            <button className="btn-secondary" style={{ padding: '4px 8px', fontSize: '12px' }} onClick={applyBatchOnsite}>应用</button>
+                                            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>低级错误:</span>
+                                            <input type="number" min="0" value={batchMinorError} onChange={e => setBatchMinorError(Number(e.target.value))} style={{ width: '50px', padding: '4px' }} />
+                                            <button className="btn-secondary" style={{ padding: '4px 8px', fontSize: '12px' }} onClick={() => setEmployeeDataList(prev => prev.map(emp => ({ ...emp, minor_error_count: batchMinorError })))}>应用</button>
                                         </div>
                                     </div>
                                 </div>
@@ -596,10 +591,10 @@ export default function Performance() {
                                                 <th style={{ position: 'sticky', top: 0 }}>应出勤</th>
                                                 <th style={{ position: 'sticky', top: 0 }}>现场表现</th>
                                                 <th style={{ position: 'sticky', top: 0 }}>标注得分</th>
+                                                <th style={{ position: 'sticky', top: 0 }}>低级错误</th>
                                                 <th style={{ position: 'sticky', top: 0 }}>质检数</th>
                                                 <th style={{ position: 'sticky', top: 0 }}>错题数</th>
                                                 <th style={{ position: 'sticky', top: 0 }}>准确率</th>
-                                                <th style={{ position: 'sticky', top: 0 }}>低级错误</th>
                                                 <th style={{ position: 'sticky', top: 0, color: '#10b981' }}>预估得分</th>
                                             </tr>
                                         </thead>
@@ -614,10 +609,10 @@ export default function Performance() {
                                                         <td><input type="number" value={emp.required_attendance} onChange={e => updateEmployeeData(emp.user_id, 'required_attendance', Number(e.target.value))} style={{ width: '50px', padding: '3px' }} disabled={!emp.selected} /></td>
                                                         <td><input type="number" min="1" max="5" step="0.5" value={emp.onsite_performance} onChange={e => updateEmployeeData(emp.user_id, 'onsite_performance', Number(e.target.value))} style={{ width: '45px', padding: '3px' }} disabled={!emp.selected} /></td>
                                                         <td><input type="number" min="0" max="100" value={emp.annotation_score} onChange={e => updateEmployeeData(emp.user_id, 'annotation_score', Number(e.target.value))} style={{ width: '50px', padding: '3px' }} disabled={!emp.selected} /></td>
+                                                        <td><input type="number" min="0" value={emp.minor_error_count} onChange={e => updateEmployeeData(emp.user_id, 'minor_error_count', Number(e.target.value))} style={{ width: '45px', padding: '3px' }} disabled={!emp.selected} /></td>
                                                         <td style={{ color: 'rgba(255,255,255,0.6)' }}>{emp.total_inspected}</td>
                                                         <td style={{ color: 'rgba(255,255,255,0.6)' }}>{emp.total_errors}</td>
                                                         <td style={{ color: 'rgba(255,255,255,0.6)' }}>{accuracy}%</td>
-                                                        <td style={{ color: 'rgba(255,255,255,0.6)' }}>{emp.minor_error_count}</td>
                                                         <td style={{ color: '#10b981', fontWeight: 600 }}>{calcPreviewScore(emp)}</td>
                                                     </tr>
                                                 )
@@ -626,7 +621,7 @@ export default function Performance() {
                                     </table>
                                 </div>
                                 <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginTop: '8px' }}>
-                                    💡 质检数、错题数、低级错误由系统自动从数据库汇总
+                                    💡 质检数、错题数由系统自动汇总
                                 </p>
                             </>
                         )}
@@ -658,18 +653,22 @@ export default function Performance() {
                                 <input type="number" value={editRecord.required_attendance} onChange={e => setEditRecord(prev => prev ? { ...prev, required_attendance: Number(e.target.value) } : null)} />
                             </div>
                             <div className="form-group">
+                                <label>现场表现 (1-5)</label>
+                                <input type="number" min="1" max="5" step="0.5" value={editRecord.onsite_performance} onChange={e => setEditRecord(prev => prev ? { ...prev, onsite_performance: Number(e.target.value) } : null)} />
+                            </div>
+                            <div className="form-group">
                                 <label>标注得分 (0-100)</label>
                                 <input type="number" min="0" max="100" value={editRecord.annotation_score} onChange={e => setEditRecord(prev => prev ? { ...prev, annotation_score: Number(e.target.value) } : null)} />
                             </div>
                             <div className="form-group">
-                                <label>现场表现 (1-5)</label>
-                                <input type="number" min="1" max="5" step="0.5" value={editRecord.onsite_performance} onChange={e => setEditRecord(prev => prev ? { ...prev, onsite_performance: Number(e.target.value) } : null)} />
+                                <label>低级错误 (每次扣3分)</label>
+                                <input type="number" min="0" value={editRecord.minor_error_count} onChange={e => setEditRecord(prev => prev ? { ...prev, minor_error_count: Number(e.target.value) } : null)} />
                             </div>
                         </div>
 
                         <div style={{ marginTop: '20px', padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
                             <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '14px', marginBottom: '8px' }}>系统数据（自动获取）：</p>
-                            <p>质检数: <strong>{editRecord.total_inspected}</strong> | 错题数: <strong>{editRecord.total_errors}</strong> | 低级错误: <strong>{editRecord.minor_error_count}</strong></p>
+                            <p>质检数: <strong>{editRecord.total_inspected}</strong> | 错题数: <strong>{editRecord.total_errors}</strong></p>
                         </div>
 
                         <div className="form-actions" style={{ marginTop: '20px' }}>
