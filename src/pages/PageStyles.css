@@ -116,7 +116,7 @@
 }
 
 /* ============================================================
-   表格样式 (已移除 backdrop-filter 以提升滚动性能)
+   表格样式
    ============================================================ */
 .table-container {
     background: rgba(30, 32, 48, 0.95);
@@ -321,7 +321,6 @@
     color: rgba(255, 255, 255, 0.4);
 }
 
-/* 下拉框选项样式 - 确保深色背景下可见 */
 .form-group select option,
 .filter-bar select option,
 select option {
@@ -524,4 +523,122 @@ select option {
     border-radius: 8px;
     text-align: center;
     color: rgba(255, 255, 255, 0.8);
+}
+
+/* ============================================================
+   批次详情弹窗样式
+   ============================================================ */
+.batch-cell-clickable {
+    cursor: pointer;
+}
+
+.batch-link {
+    color: #667eea;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+}
+
+.batch-link:hover {
+    color: #8b9ef7;
+    text-decoration-style: solid;
+}
+
+.batch-modal-header {
+    margin-bottom: 16px;
+}
+
+.batch-modal-header .batch-name {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    word-break: break-all;
+    line-height: 1.5;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.batch-modal-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.batch-modal-stats .stat-item {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+}
+
+.batch-modal-stats .stat-label {
+    display: block;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 4px;
+}
+
+.batch-modal-stats .stat-value {
+    display: block;
+    font-size: 18px;
+    font-weight: 600;
+    color: #4facfe;
+}
+
+.batch-modal-list {
+    max-height: 350px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+}
+
+.batch-modal-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.batch-modal-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+}
+
+.batch-modal-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+}
+
+.batch-modal-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.batch-list-header {
+    display: grid;
+    grid-template-columns: 2fr 1.5fr 1fr 1fr;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.08);
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.7);
+    text-transform: uppercase;
+    position: sticky;
+    top: 0;
+}
+
+.batch-list-item {
+    display: grid;
+    grid-template-columns: 2fr 1.5fr 1fr 1fr;
+    gap: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #fff;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.batch-list-item:last-child {
+    border-bottom: none;
+}
+
+.batch-list-item:hover {
+    background: rgba(255, 255, 255, 0.03);
 }

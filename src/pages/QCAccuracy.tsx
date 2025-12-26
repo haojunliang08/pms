@@ -65,6 +65,28 @@ export default function QCAccuracy() {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [deleting, setDeleting] = useState(false)
 
+    // 批次详情弹窗状态
+    const [showBatchModal, setShowBatchModal] = useState(false)
+    const [selectedBatchName, setSelectedBatchName] = useState<string | null>(null)
+
+    // 获取某个批次的所有记录，并按正确率从高到低排序
+    const getBatchRecords = (batchName: string) => {
+        if (!batchName) return []
+        const batchRecords = records.filter(r => r.batch_name === batchName)
+        // 按正确率从高到低排序
+        return batchRecords.sort((a, b) => {
+            const accA = a.inspected_count > 0 ? ((a.inspected_count - a.error_count) / a.inspected_count) * 100 : 0
+            const accB = b.inspected_count > 0 ? ((b.inspected_count - b.error_count) / b.inspected_count) * 100 : 0
+            return accB - accA
+        })
+    }
+
+    // 点击批次名称打开弹窗
+    const openBatchModal = (batchName: string) => {
+        setSelectedBatchName(batchName)
+        setShowBatchModal(true)
+    }
+
     useEffect(() => { fetchData() }, [currentUser])
 
     async function fetchData() {
@@ -267,7 +289,12 @@ export default function QCAccuracy() {
                                         <td>{r.branch?.name || '-'}</td>
                                         <td>{r.user?.group?.name || '-'}</td>
                                         <td>{r.topic || '-'}</td>
-                                        <td>{r.batch_name || '-'}</td>
+                                        <td
+                                            className="batch-cell-clickable"
+                                            onClick={() => r.batch_name && openBatchModal(r.batch_name)}
+                                        >
+                                            {r.batch_name ? <span className="batch-link">{r.batch_name}</span> : '-'}
+                                        </td>
                                         <td>{r.inspected_count}</td>
                                         <td>{r.error_count}</td>
                                         <td className={acc >= ACCURACY_THRESHOLD ? 'accuracy-pass' : 'accuracy-fail'}><strong>{acc.toFixed(2)}%</strong></td>
@@ -321,6 +348,64 @@ export default function QCAccuracy() {
                     </div>
                 </div>
             )}
+
+            {/* 批次详情弹窗 */}
+            {showBatchModal && selectedBatchName && (() => {
+                const batchRecords = getBatchRecords(selectedBatchName)
+                const totalInspected = batchRecords.reduce((sum, br) => sum + br.inspected_count, 0)
+                const totalErrors = batchRecords.reduce((sum, br) => sum + br.error_count, 0)
+                const batchAcc = totalInspected > 0 ? ((totalInspected - totalErrors) / totalInspected) * 100 : 0
+                return (
+                    <div className="modal-overlay" onClick={() => setShowBatchModal(false)}>
+                        <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+                            <h2>📊 批次详情</h2>
+                            <div className="batch-modal-header">
+                                <div className="batch-name">{selectedBatchName}</div>
+                            </div>
+                            <div className="batch-modal-stats">
+                                <div className="stat-item">
+                                    <span className="stat-label">记录数</span>
+                                    <span className="stat-value">{batchRecords.length}</span>
+                                </div>
+                                <div className="stat-item">
+                                    <span className="stat-label">总质检</span>
+                                    <span className="stat-value">{totalInspected}</span>
+                                </div>
+                                <div className="stat-item">
+                                    <span className="stat-label">总错误</span>
+                                    <span className="stat-value">{totalErrors}</span>
+                                </div>
+                                <div className="stat-item">
+                                    <span className="stat-label">批次准确率</span>
+                                    <span className={`stat-value ${batchAcc >= ACCURACY_THRESHOLD ? 'accuracy-pass' : 'accuracy-fail'}`}>{batchAcc.toFixed(2)}%</span>
+                                </div>
+                            </div>
+                            <div className="batch-modal-list">
+                                <div className="batch-list-header">
+                                    <span>员工</span>
+                                    <span>日期</span>
+                                    <span>质检/错误</span>
+                                    <span>准确率</span>
+                                </div>
+                                {batchRecords.map(br => {
+                                    const itemAcc = br.inspected_count > 0 ? ((br.inspected_count - br.error_count) / br.inspected_count) * 100 : 0
+                                    return (
+                                        <div key={br.id} className="batch-list-item">
+                                            <span>{br.user?.name || '未知'}</span>
+                                            <span>{br.inspection_date}</span>
+                                            <span>{br.inspected_count}/{br.error_count}</span>
+                                            <span className={itemAcc >= ACCURACY_THRESHOLD ? 'accuracy-pass' : 'accuracy-fail'}>{itemAcc.toFixed(2)}%</span>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                            <div className="form-actions" style={{ marginTop: '20px' }}>
+                                <button type="button" className="btn-secondary" onClick={() => setShowBatchModal(false)}>关闭</button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            })()}
         </div>
     )
 }
