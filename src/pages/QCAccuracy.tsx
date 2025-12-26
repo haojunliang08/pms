@@ -16,7 +16,6 @@ import type { QualityInspection, Branch, Group, User } from '../types/database'
 import './PageStyles.css'
 
 const ACCURACY_THRESHOLD = 95
-const MAX_DATE_RANGE_DAYS = 31 // 最大日期范围（一个月）
 
 interface ExtendedQCRecord extends QualityInspection {
     user?: User & { group?: Group }
@@ -49,11 +48,12 @@ export default function QCAccuracy() {
     } | null>(null)
     const [saving, setSaving] = useState(false)
 
-    // 日期筛选 - 默认只显示当天数据（如果有URL参数则使用参数中的月份）
+    // 日期筛选 - 默认显示当月数据（如果有URL参数则使用参数中的月份）
     const today = new Date()
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-    const defaultStart = urlPeriod ? `${urlPeriod}-01` : todayStr
-    const defaultEnd = urlPeriod ? `${urlPeriod}-31` : todayStr
+    const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+    const monthEnd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    const defaultStart = urlPeriod ? `${urlPeriod}-01` : monthStart
+    const defaultEnd = urlPeriod ? `${urlPeriod}-31` : monthEnd
 
     const [filterDateStart, setFilterDateStart] = useState(defaultStart)
     const [filterDateEnd, setFilterDateEnd] = useState(defaultEnd)
@@ -61,41 +61,9 @@ export default function QCAccuracy() {
     const [filterGroup, setFilterGroup] = useState('')
     const [filterEmployee, setFilterEmployee] = useState(urlUser || '')
 
-    // 日期范围错误提示
-    const [dateRangeError, setDateRangeError] = useState('')
-
     // 批量选择状态
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [deleting, setDeleting] = useState(false)
-
-    // 验证日期范围是否超过一个月
-    const validateDateRange = (start: string, end: string): boolean => {
-        if (!start || !end) return true
-        const startDate = new Date(start)
-        const endDate = new Date(end)
-        const diffTime = Math.abs(endDate.getTime() - startDate.getTime())
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-        return diffDays <= MAX_DATE_RANGE_DAYS
-    }
-
-    // 处理日期变化，并验证范围
-    const handleDateStartChange = (value: string) => {
-        setFilterDateStart(value)
-        if (!validateDateRange(value, filterDateEnd)) {
-            setDateRangeError('日期范围不能超过一个月，请缩小范围以避免数据卡顿')
-        } else {
-            setDateRangeError('')
-        }
-    }
-
-    const handleDateEndChange = (value: string) => {
-        setFilterDateEnd(value)
-        if (!validateDateRange(filterDateStart, value)) {
-            setDateRangeError('日期范围不能超过一个月，请缩小范围以避免数据卡顿')
-        } else {
-            setDateRangeError('')
-        }
-    }
 
     useEffect(() => { fetchData() }, [currentUser])
 
@@ -227,16 +195,13 @@ export default function QCAccuracy() {
         })
     }
 
-    // 筛选（日期范围超限时不显示数据，避免卡顿）
-    const isDateRangeValid = validateDateRange(filterDateStart, filterDateEnd)
-    let filteredRecords = isDateRangeValid ? records : []
-    if (isDateRangeValid) {
-        if (filterDateStart) filteredRecords = filteredRecords.filter(r => r.inspection_date >= filterDateStart)
-        if (filterDateEnd) filteredRecords = filteredRecords.filter(r => r.inspection_date <= filterDateEnd)
-        if (filterBranch) filteredRecords = filteredRecords.filter(r => r.branch_id === filterBranch)
-        if (filterGroup) filteredRecords = filteredRecords.filter(r => r.user?.group_id === filterGroup)
-        if (filterEmployee) filteredRecords = filteredRecords.filter(r => r.user_id === filterEmployee)
-    }
+    // 筛选
+    let filteredRecords = records
+    if (filterDateStart) filteredRecords = filteredRecords.filter(r => r.inspection_date >= filterDateStart)
+    if (filterDateEnd) filteredRecords = filteredRecords.filter(r => r.inspection_date <= filterDateEnd)
+    if (filterBranch) filteredRecords = filteredRecords.filter(r => r.branch_id === filterBranch)
+    if (filterGroup) filteredRecords = filteredRecords.filter(r => r.user?.group_id === filterGroup)
+    if (filterEmployee) filteredRecords = filteredRecords.filter(r => r.user_id === filterEmployee)
 
     // 全选/取消全选
     function toggleSelectAll(checked: boolean) {
@@ -257,14 +222,13 @@ export default function QCAccuracy() {
         <div className="page-container">
             <header className="page-header"><div><h1>质检准确率</h1><p>标准：≥{ACCURACY_THRESHOLD}% 达标</p></div></header>
             <div className="filter-bar">
-                <div className="filter-group"><label>开始日期</label><input type="date" value={filterDateStart} onChange={e => handleDateStartChange(e.target.value)} /></div>
-                <div className="filter-group"><label>结束日期</label><input type="date" value={filterDateEnd} onChange={e => handleDateEndChange(e.target.value)} /></div>
+                <div className="filter-group"><label>开始日期</label><input type="date" value={filterDateStart} onChange={e => setFilterDateStart(e.target.value)} /></div>
+                <div className="filter-group"><label>结束日期</label><input type="date" value={filterDateEnd} onChange={e => setFilterDateEnd(e.target.value)} /></div>
                 {currentUser?.role === 'admin' && <select value={filterBranch} onChange={e => { setFilterBranch(e.target.value); setFilterGroup(''); setFilterEmployee('') }}><option value="">全部子公司</option>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select>}
                 {currentUser?.role !== 'employee' && <select value={filterGroup} onChange={e => { setFilterGroup(e.target.value); setFilterEmployee('') }}><option value="">全部小组</option>{availableGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select>}
                 <select value={filterEmployee} onChange={e => setFilterEmployee(e.target.value)}><option value="">全部员工</option>{availableEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
-                <button className="btn-secondary" onClick={() => { const t = new Date(); const todayReset = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; handleDateStartChange(todayReset); handleDateEndChange(todayReset); setFilterBranch(currentUser?.role === 'manager' ? (currentUser?.branch_id || '') : ''); setFilterGroup(''); setFilterEmployee('') }}>重置筛选</button>
+                <button className="btn-secondary" onClick={() => { const t = new Date(); setFilterDateStart(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-01`); setFilterDateEnd(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`); setFilterBranch(currentUser?.role === 'manager' ? (currentUser?.branch_id || '') : ''); setFilterGroup(''); setFilterEmployee('') }}>重置筛选</button>
             </div>
-            {dateRangeError && <div className="date-range-error" style={{ padding: '12px 16px', marginBottom: '16px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', color: '#ef4444', fontSize: '14px' }}>⚠️ {dateRangeError}</div>}
             <div className="table-container">
                 {loading ? <div className="loading">加载中...</div> : filteredRecords.length === 0 ? (
                     <div className="empty-state"><span className="empty-icon">🎯</span><h3>暂无质检数据</h3></div>
@@ -357,8 +321,6 @@ export default function QCAccuracy() {
                     </div>
                 </div>
             )}
-
-            <style>{`.accuracy-pass { color: var(--success, #10b981); font-weight: 600; } .accuracy-fail { color: var(--danger, #ef4444); font-weight: 600; } .filter-group { display: flex; flex-direction: column; gap: 4px; } .filter-group label { font-size: 12px; color: rgba(255,255,255,0.6); } .filter-group input[type="date"] { padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; } .stats-summary { margin-top: 16px; padding: 12px 16px; background: rgba(255,255,255,0.03); border-radius: 8px; text-align: center; color: rgba(255,255,255,0.8); }`}</style>
         </div>
     )
 }

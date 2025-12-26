@@ -116,11 +116,10 @@
 }
 
 /* ============================================================
-   表格样式
+   表格样式 (已移除 backdrop-filter 以提升滚动性能)
    ============================================================ */
 .table-container {
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(10px);
+    background: rgba(30, 32, 48, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 16px;
     overflow: hidden;
@@ -484,4 +483,45 @@ select option {
     color: #fff;
     font-size: 1.25rem;
     margin: 0 0 1rem 0;
+}
+
+/* ============================================================
+   质检准确率页面样式
+   ============================================================ */
+.accuracy-pass {
+    color: var(--success, #10b981);
+    font-weight: 600;
+}
+
+.accuracy-fail {
+    color: var(--danger, #ef4444);
+    font-weight: 600;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.filter-group label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.filter-group input[type="date"] {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+}
+
+.stats-summary {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.8);
 }
