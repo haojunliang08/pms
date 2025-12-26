@@ -134,7 +134,7 @@ export interface User {
  * 包含多个维度的数据和权重配置
  * 
  * 绩效计算公式：
- * 最终得分 = 出勤得分×权重 + 标注得分×权重 + 现场表现得分×权重 + 准确率得分×权重 - 低级错误扣分
+ * 最终得分 = 标注得分×20% + 出勤得分×20% + 现场表现得分×20% + 准确率得分×40% - 减分 + 加分
  */
 export interface PerformanceRecord {
     id: string                  // 唯一标识
@@ -149,7 +149,7 @@ export interface PerformanceRecord {
     // 出勤率 = actual_attendance / required_attendance
 
     // ========== 标注得分 ==========
-    annotation_score: number        // 标注得分（0-100分，直接评分）
+    annotation_score: number    // 标注得分（0-100分，直接评分）
 
     // ========== 现场表现 ==========
     onsite_performance: number  // 现场表现评分，1-5分
@@ -159,22 +159,23 @@ export interface PerformanceRecord {
     total_errors: number        // 总错误题目数
     // 准确率 = (total_inspected - total_errors) / total_inspected
 
-    // ========== 低级错误 ==========
-    minor_error_count: number   // 低级错误次数
-    // 低级错误每次扣3分
+    // ========== 加减分项 ==========
+    deduction_points: number    // 减分项（直接扣除的分数）
+    deduction_reason: string | null  // 减分原因
+    bonus_points: number        // 加分项（直接增加的分数）
+    bonus_reason: string | null // 加分原因
 
     // ========== 备注 ==========
     remarks: string | null      // 备注信息
 
     // ========== 权重配置（百分比，如20表示20%） ==========
-    weight_attendance: number   // 出勤权重
-    weight_annotation: number   // 标注权重
-    weight_onsite: number       // 现场表现权重
-    weight_accuracy: number     // 准确率权重
-    weight_errors: number       // 低级错误权重（实际是扣分系数）
+    weight_annotation: number   // 标注权重 (默认20%)
+    weight_attendance: number   // 出勤权重 (默认20%)
+    weight_onsite: number       // 现场表现权重 (默认20%)
+    weight_accuracy: number     // 准确率权重 (默认40%)
 
     // ========== 最终得分 ==========
-    final_score: number | null  // 最终绩效得分，可能还未计算
+    final_score: number | null  // 最终绩效得分，可能超过100或小于0
 
     created_at: string
     updated_at: string

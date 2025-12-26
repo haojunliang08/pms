@@ -186,23 +186,28 @@ CREATE TABLE IF NOT EXISTS performance_records (
   group_id UUID REFERENCES groups(id) ON DELETE SET NULL,
   period VARCHAR(20) NOT NULL,
 
+  -- 基础数据
   actual_attendance INTEGER DEFAULT 0,
   required_attendance INTEGER DEFAULT 22,
-  annotation_count INTEGER DEFAULT 0,
-  annotation_target INTEGER DEFAULT 1000,
-  onsite_performance DECIMAL(3,2) DEFAULT 3.00,
+  annotation_score DECIMAL(5,2) DEFAULT 80.00,  -- 标注得分(0-100)
+  onsite_performance DECIMAL(3,2) DEFAULT 3.00, -- 现场表现(1-5)
   total_inspected INTEGER DEFAULT 0,
   total_errors INTEGER DEFAULT 0,
-  minor_error_count INTEGER DEFAULT 0,
+  
+  -- 加减分项
+  deduction_points DECIMAL(5,2) DEFAULT 0,      -- 减分项
+  deduction_reason TEXT,                        -- 减分原因
+  bonus_points DECIMAL(5,2) DEFAULT 0,          -- 加分项
+  bonus_reason TEXT,                            -- 加分原因
   remarks TEXT,
 
+  -- 权重配置：标注20% + 出勤20% + 现场20% + 准确率40% = 100%
+  weight_annotation DECIMAL(5,2) DEFAULT 20.00,
   weight_attendance DECIMAL(5,2) DEFAULT 20.00,
-  weight_annotation DECIMAL(5,2) DEFAULT 25.00,
-  weight_onsite DECIMAL(5,2) DEFAULT 15.00,
-  weight_accuracy DECIMAL(5,2) DEFAULT 30.00,
-  weight_errors DECIMAL(5,2) DEFAULT 10.00,
+  weight_onsite DECIMAL(5,2) DEFAULT 20.00,
+  weight_accuracy DECIMAL(5,2) DEFAULT 40.00,
 
-  final_score DECIMAL(6,2),
+  final_score DECIMAL(8,2),  -- 可能超过100或小于0
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
 
@@ -272,45 +277,42 @@ CREATE TRIGGER update_performance_updated_at
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 绩效得分计算触发器
+-- 权重：标注20% + 出勤20% + 现场表现20% + 准确率40%
+-- 最终得分 = 加权得分 - 减分项 + 加分项（无上下限）
 CREATE OR REPLACE FUNCTION calculate_performance_score()
 RETURNS TRIGGER AS $$
 DECLARE
   attendance_score DECIMAL;
-  annotation_score DECIMAL;
   onsite_score DECIMAL;
   accuracy_score DECIMAL;
-  error_deduction DECIMAL;
+  base_score DECIMAL;
 BEGIN
+  -- 出勤得分 (0-100)
   IF NEW.required_attendance > 0 THEN
     attendance_score := (NEW.actual_attendance::DECIMAL / NEW.required_attendance) * 100;
   ELSE
     attendance_score := 100;
   END IF;
   
-  IF NEW.annotation_target > 0 THEN
-    annotation_score := LEAST((NEW.annotation_count::DECIMAL / NEW.annotation_target) * 100, 100);
-  ELSE
-    annotation_score := 100;
-  END IF;
-  
+  -- 现场表现得分 (1-5 -> 0-100)
   onsite_score := (NEW.onsite_performance / 5) * 100;
   
+  -- 准确率得分 (0-100)
   IF NEW.total_inspected > 0 THEN
     accuracy_score := (1 - (NEW.total_errors::DECIMAL / NEW.total_inspected)) * 100;
   ELSE
     accuracy_score := 100;
   END IF;
   
-  error_deduction := NEW.minor_error_count * 3;
-  
-  NEW.final_score := 
+  -- 计算加权基础分
+  base_score := 
+    (NEW.annotation_score * NEW.weight_annotation / 100) +
     (attendance_score * NEW.weight_attendance / 100) +
-    (annotation_score * NEW.weight_annotation / 100) +
     (onsite_score * NEW.weight_onsite / 100) +
-    (accuracy_score * NEW.weight_accuracy / 100) -
-    (error_deduction * NEW.weight_errors / 100);
+    (accuracy_score * NEW.weight_accuracy / 100);
   
-  NEW.final_score := GREATEST(0, LEAST(100, NEW.final_score));
+  -- 最终得分 = 基础分 - 减分 + 加分（不限制范围）
+  NEW.final_score := base_score - COALESCE(NEW.deduction_points, 0) + COALESCE(NEW.bonus_points, 0);
   
   RETURN NEW;
 END;
