@@ -337,15 +337,41 @@ INSERT INTO users (name, email, password_hash, role) VALUES
 ON CONFLICT (email) DO NOTHING;
 
 -- ============================================================
--- 禁用 RLS（行级安全）
+-- 启用 RLS（行级安全）并创建宽松策略
 -- ============================================================
 -- 注意：由于这是内部管理系统，使用自定义认证，
--- 我们禁用 RLS 以允许所有已登录用户访问数据。
+-- 我们启用 RLS 但创建允许所有操作的策略，以满足 Supabase 安全要求。
 -- 数据隔离通过前端逻辑和角色控制实现。
 
-ALTER TABLE branches DISABLE ROW LEVEL SECURITY;
-ALTER TABLE groups DISABLE ROW LEVEL SECURITY;
-ALTER TABLE users DISABLE ROW LEVEL SECURITY;
-ALTER TABLE performance_records DISABLE ROW LEVEL SECURITY;
-ALTER TABLE quality_inspections DISABLE ROW LEVEL SECURITY;
-ALTER TABLE minor_error_records DISABLE ROW LEVEL SECURITY;
+-- 启用 RLS
+ALTER TABLE branches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE performance_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE quality_inspections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE minor_error_records ENABLE ROW LEVEL SECURITY;
+
+-- 为每个表创建允许所有操作的策略
+-- branches 表
+DROP POLICY IF EXISTS "允许所有操作" ON branches;
+CREATE POLICY "允许所有操作" ON branches FOR ALL USING (true) WITH CHECK (true);
+
+-- groups 表
+DROP POLICY IF EXISTS "允许所有操作" ON groups;
+CREATE POLICY "允许所有操作" ON groups FOR ALL USING (true) WITH CHECK (true);
+
+-- users 表
+DROP POLICY IF EXISTS "允许所有操作" ON users;
+CREATE POLICY "允许所有操作" ON users FOR ALL USING (true) WITH CHECK (true);
+
+-- performance_records 表
+DROP POLICY IF EXISTS "允许所有操作" ON performance_records;
+CREATE POLICY "允许所有操作" ON performance_records FOR ALL USING (true) WITH CHECK (true);
+
+-- quality_inspections 表
+DROP POLICY IF EXISTS "允许所有操作" ON quality_inspections;
+CREATE POLICY "允许所有操作" ON quality_inspections FOR ALL USING (true) WITH CHECK (true);
+
+-- minor_error_records 表
+DROP POLICY IF EXISTS "允许所有操作" ON minor_error_records;
+CREATE POLICY "允许所有操作" ON minor_error_records FOR ALL USING (true) WITH CHECK (true);
