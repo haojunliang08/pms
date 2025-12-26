@@ -85,10 +85,10 @@ export default function Performance() {
     // ========== 周期选项 ==========
     const periodOptions = Array.from({ length: 12 }, (_, i) => {
         const date = new Date()
-        date.setMonth(date.getMonth() - i - 1)
+        date.setMonth(date.getMonth() - i)  // 改为 -i，这样第一个是本月
         return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
     })
-    const lastMonth = periodOptions[0]
+    const lastMonth = periodOptions[1]  // 上月是第二个
 
     // ========== 筛选状态 ==========
     const [filterPeriod, setFilterPeriod] = useState(lastMonth)
@@ -612,24 +612,26 @@ export default function Performance() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {employeeDataList.map(emp => {
-                                                const accuracy = emp.total_inspected > 0 ? ((1 - emp.total_errors / emp.total_inspected) * 100).toFixed(2) : '-'
-                                                return (
-                                                    <tr key={emp.user_id} style={{ opacity: emp.selected ? 1 : 0.5 }}>
-                                                        <td><input type="checkbox" checked={emp.selected} onChange={e => updateEmployeeData(emp.user_id, 'selected', e.target.checked)} /></td>
-                                                        <td><strong>{emp.name}</strong></td>
-                                                        <td><input type="number" value={emp.actual_attendance} onChange={e => updateEmployeeData(emp.user_id, 'actual_attendance', Number(e.target.value))} style={{ width: '50px', padding: '3px' }} disabled={!emp.selected} /></td>
-                                                        <td><input type="number" value={emp.required_attendance} onChange={e => updateEmployeeData(emp.user_id, 'required_attendance', Number(e.target.value))} style={{ width: '50px', padding: '3px' }} disabled={!emp.selected} /></td>
-                                                        <td><input type="number" min="1" max="5" step="0.5" value={emp.onsite_performance} onChange={e => updateEmployeeData(emp.user_id, 'onsite_performance', Number(e.target.value))} style={{ width: '45px', padding: '3px' }} disabled={!emp.selected} /></td>
-                                                        <td><input type="number" min="0" max="100" value={emp.annotation_score} onChange={e => updateEmployeeData(emp.user_id, 'annotation_score', Number(e.target.value))} style={{ width: '50px', padding: '3px' }} disabled={!emp.selected} /></td>
-                                                        <td><input type="number" min="0" value={emp.minor_error_count} onChange={e => updateEmployeeData(emp.user_id, 'minor_error_count', Number(e.target.value))} style={{ width: '45px', padding: '3px' }} disabled={!emp.selected} /></td>
-                                                        <td style={{ color: 'rgba(255,255,255,0.6)' }}>{emp.total_inspected}</td>
-                                                        <td style={{ color: 'rgba(255,255,255,0.6)' }}>{emp.total_errors}</td>
-                                                        <td style={{ color: 'rgba(255,255,255,0.6)' }}>{accuracy}%</td>
-                                                        <td style={{ color: '#10b981', fontWeight: 600 }}>{calcPreviewScore(emp)}</td>
-                                                    </tr>
-                                                )
-                                            })}
+                                            {[...employeeDataList]
+                                                .sort((a, b) => Number(calcPreviewScore(b)) - Number(calcPreviewScore(a)))
+                                                .map(emp => {
+                                                    const accuracy = emp.total_inspected > 0 ? ((1 - emp.total_errors / emp.total_inspected) * 100).toFixed(2) : '-'
+                                                    return (
+                                                        <tr key={emp.user_id} style={{ opacity: emp.selected ? 1 : 0.5 }}>
+                                                            <td><input type="checkbox" checked={emp.selected} onChange={e => updateEmployeeData(emp.user_id, 'selected', e.target.checked)} /></td>
+                                                            <td><strong>{emp.name}</strong></td>
+                                                            <td><input type="number" value={emp.actual_attendance} onChange={e => updateEmployeeData(emp.user_id, 'actual_attendance', Number(e.target.value))} style={{ width: '50px', padding: '3px' }} disabled={!emp.selected} /></td>
+                                                            <td><input type="number" value={emp.required_attendance} onChange={e => updateEmployeeData(emp.user_id, 'required_attendance', Number(e.target.value))} style={{ width: '50px', padding: '3px' }} disabled={!emp.selected} /></td>
+                                                            <td><input type="number" min="1" max="5" step="0.5" value={emp.onsite_performance} onChange={e => updateEmployeeData(emp.user_id, 'onsite_performance', Number(e.target.value))} style={{ width: '45px', padding: '3px' }} disabled={!emp.selected} /></td>
+                                                            <td><input type="number" min="0" max="100" value={emp.annotation_score} onChange={e => updateEmployeeData(emp.user_id, 'annotation_score', Number(e.target.value))} style={{ width: '50px', padding: '3px' }} disabled={!emp.selected} /></td>
+                                                            <td><input type="number" min="0" value={emp.minor_error_count} onChange={e => updateEmployeeData(emp.user_id, 'minor_error_count', Number(e.target.value))} style={{ width: '45px', padding: '3px' }} disabled={!emp.selected} /></td>
+                                                            <td style={{ color: 'rgba(255,255,255,0.6)' }}>{emp.total_inspected}</td>
+                                                            <td style={{ color: 'rgba(255,255,255,0.6)' }}>{emp.total_errors}</td>
+                                                            <td style={{ color: 'rgba(255,255,255,0.6)' }}>{accuracy}%</td>
+                                                            <td style={{ color: '#10b981', fontWeight: 600 }}>{calcPreviewScore(emp)}</td>
+                                                        </tr>
+                                                    )
+                                                })}
                                         </tbody>
                                     </table>
                                 </div>

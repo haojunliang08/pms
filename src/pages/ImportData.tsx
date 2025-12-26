@@ -14,6 +14,29 @@ import { useAuth } from '../contexts/AuthContext'
 import * as XLSX from 'xlsx'
 import './PageStyles.css'
 
+/**
+ * 清理姓名，去除多余内容
+ * 例如："李四-保人月" -> "李四"
+ * "李四 " -> "李四"
+ */
+function cleanName(name: string): string {
+    if (!name) return ''
+    // 去除前后空格
+    let cleaned = name.trim()
+    // 如果包含 - 或 _ 或空格，只取第一部分（姓名）
+    cleaned = cleaned.split(/[-_\s]/)[0]
+    return cleaned.trim()
+}
+
+/**
+ * 处理数字字段，兼容空值、0、字符串等情况
+ */
+function parseNumber(value: unknown): number {
+    if (value === null || value === undefined || value === '') return 0
+    const num = Number(value)
+    return isNaN(num) ? 0 : num
+}
+
 interface ExcelRow { 日期: string; 标注人员姓名: string; 所属topic: string; 批次名称: string; 被质检题目数量: number; 错误题目数量: number }
 
 export default function ImportData() {
@@ -37,7 +60,7 @@ export default function ImportData() {
         const [branchesRes, usersRes, importsRes] = await Promise.all([
             supabase.from('branches').select('*').order('name'),
             supabase.from('users').select('*').eq('role', 'employee').order('name'),
-            supabase.from('quality_inspections').select('*, user:users(name)').order('created_at', { ascending: false }).limit(50),
+            supabase.from('quality_inspections').select('*, user:users(name)').order('created_at', { ascending: false }).limit(15),
         ])
         setBranches(branchesRes.data || [])
         setUsers(usersRes.data || [])
@@ -68,9 +91,26 @@ export default function ImportData() {
             }
         }
 
-        for (const data of batchMap.values()) {
-            const { error } = await supabase.from('quality_inspections').upsert({ ...data, branch_id: selectedBranch }, { onConflict: 'user_id,inspection_date,batch_name' })
-            error ? (errors.push(`导入失败: ${error.message}`), failed++) : success++
+        // 批量插入 - 分批提交，每批最多500条
+        const BATCH_SIZE = 500
+        const dataToInsert = Array.from(batchMap.values()).map(data => ({
+            ...data,
+            branch_id: selectedBranch
+        }))
+
+        // 分批处理
+        for (let i = 0; i < dataToInsert.length; i += BATCH_SIZE) {
+            const batch = dataToInsert.slice(i, i + BATCH_SIZE)
+            const { error } = await supabase
+                .from('quality_inspections')
+                .upsert(batch, { onConflict: 'user_id,inspection_date,batch_name' })
+
+            if (error) {
+                errors.push(`批次 ${Math.floor(i / BATCH_SIZE) + 1} 导入失败: ${error.message}`)
+                failed += batch.length
+            } else {
+                success += batch.length
+            }
         }
 
         return { success, failed, errors: errors.slice(0, 10) }
@@ -148,11 +188,11 @@ export default function ImportData() {
 
         return data.slice(dataStartIndex).filter(row => row.length > 0).map(row => ({
             日期: String(row[0] || ''),
-            标注人员姓名: String(row[1] || ''),
+            标注人员姓名: cleanName(String(row[1] || '')),
             所属topic: String(row[2] || ''),
             批次名称: String(row[3] || ''),
-            被质检题目数量: Number(row[4]) || 0,
-            错误题目数量: Number(row[5]) || 0,
+            被质检题目数量: parseNumber(row[4]),
+            错误题目数量: parseNumber(row[5]),
         }))
     }
 
@@ -180,11 +220,11 @@ export default function ImportData() {
             const values = line.split(/[,\t]+|\s{2,}/).map(v => v.trim()).filter(Boolean)
             return {
                 日期: values[0] || '',
-                标注人员姓名: values[1] || '',
+                标注人员姓名: cleanName(values[1] || ''),
                 所属topic: values[2] || '',
                 批次名称: values[3] || '',
-                被质检题目数量: Number(values[4]) || 0,
-                错误题目数量: Number(values[5]) || 0,
+                被质检题目数量: parseNumber(values[4]),
+                错误题目数量: parseNumber(values[5]),
             } as ExcelRow
         })
     }

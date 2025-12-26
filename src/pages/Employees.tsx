@@ -36,6 +36,7 @@ import { supabase } from '../lib/supabase'
 import type { User, Branch, Group, UserRole } from '../types/database'
 import { UserRoleLabels } from '../types/database'
 import { useAuth } from '../contexts/AuthContext'
+import { pinyin } from 'pinyin-pro'
 import './PageStyles.css'
 
 // ============================================================================
@@ -70,6 +71,27 @@ export default function Employees() {
 
     /** 是否显示重置密码弹窗 */
     const [showResetPasswordModal, setShowResetPasswordModal] = useState(false)
+
+    /** 是否显示批量添加弹窗 */
+    const [showBatchModal, setShowBatchModal] = useState(false)
+
+    /** 批量添加表单数据 */
+    const [batchFormData, setBatchFormData] = useState({
+        namesInput: '',          // 用户输入的姓名（换行/空格/Tab分隔）
+        emailSuffix: '@company.com',  // 邮箱后缀
+        password: '',            // 统一密码
+        branch_id: '',
+        group_id: '',
+    })
+
+    /** 批量添加预览列表 */
+    const [batchPreviewList, setBatchPreviewList] = useState<Array<{
+        name: string;
+        email: string;
+    }>>([])
+
+    /** 批量添加保存中 */
+    const [batchSaving, setBatchSaving] = useState(false)
 
     /** 要重置密码的用户ID */
     const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null)
@@ -280,6 +302,112 @@ export default function Employees() {
         }
     }
 
+    // =========== 中文转拼音 ===========
+    /**
+     * 使用 pinyin-pro 库将中文姓名转换为拼音
+     * 支持所有汉字，无需手动维护映射表
+     */
+    function nameToPinyin(name: string): string {
+        return pinyin(name, { toneType: 'none', type: 'array' }).join('')
+    }
+
+    /**
+     * 打开批量添加弹窗
+     */
+    function openBatchModal() {
+        setBatchFormData({
+            namesInput: '',
+            emailSuffix: '@company.com',
+            password: '',
+            branch_id: '',
+            group_id: '',
+        })
+        setBatchPreviewList([])
+        setShowBatchModal(true)
+    }
+
+    /**
+     * 解析姓名输入并更新预览列表
+     * 支持换行、空格、Tab作为分隔符
+     */
+    function parseNamesAndUpdatePreview(namesInput: string, emailSuffix: string) {
+        // 使用正则表达式分割，支持换行、空格、Tab
+        const names = namesInput
+            .split(/[\s\n\r\t]+/)
+            .map(n => n.trim())
+            .filter(n => n.length > 0)
+
+        const previewList = names.map(name => ({
+            name,
+            email: nameToPinyin(name) + emailSuffix,
+        }))
+
+        setBatchPreviewList(previewList)
+    }
+
+    /**
+     * 处理批量添加提交
+     */
+    async function handleBatchSubmit(e: React.FormEvent) {
+        e.preventDefault()
+
+        if (batchPreviewList.length === 0) {
+            alert('请输入至少一个姓名')
+            return
+        }
+
+        if (!batchFormData.password || batchFormData.password.length < 6) {
+            alert('请输入至少6位的密码')
+            return
+        }
+
+        setBatchSaving(true)
+        let successCount = 0
+        let failCount = 0
+        const errors: string[] = []
+
+        try {
+            for (const item of batchPreviewList) {
+                try {
+                    const { error } = await supabase.rpc('create_user_with_password', {
+                        p_name: item.name,
+                        p_email: item.email,
+                        p_password: batchFormData.password,
+                        p_role: 'employee',  // 批量添加默认为普通员工
+                        p_branch_id: batchFormData.branch_id || null,
+                        p_group_id: batchFormData.group_id || null,
+                    })
+
+                    if (error) {
+                        failCount++
+                        errors.push(`${item.name}: ${error.message}`)
+                    } else {
+                        successCount++
+                    }
+                } catch (err) {
+                    failCount++
+                    errors.push(`${item.name}: ${err instanceof Error ? err.message : '未知错误'}`)
+                }
+            }
+
+            if (failCount > 0) {
+                alert(`批量添加完成！\n成功: ${successCount} 人\n失败: ${failCount} 人\n\n失败详情:\n${errors.join('\n')}`)
+            } else {
+                alert(`批量添加成功！共添加 ${successCount} 人`)
+            }
+
+            setShowBatchModal(false)
+            fetchData()
+        } finally {
+            setBatchSaving(false)
+        }
+    }
+
+    /** 批量添加表单中的小组选项（根据选择的子公司过滤） */
+    const batchFormGroups = batchFormData.branch_id
+        ? groups.filter(g => g.branch_id === batchFormData.branch_id)
+        : groups
+
     // =========== 权限判断函数 ===========
 
     /**
@@ -375,7 +503,10 @@ export default function Employees() {
                 </div>
                 {/* 只有 admin 可以添加员工 */}
                 {currentUser?.role === 'admin' && (
-                    <button className="btn-primary" onClick={() => openModal()}>➕ 添加员工</button>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button className="btn-primary" onClick={() => openModal()}>➕ 添加员工</button>
+                        <button className="btn-secondary" onClick={openBatchModal}>📋 批量添加</button>
+                    </div>
                 )}
             </header>
 
@@ -579,6 +710,127 @@ export default function Employees() {
                             <div className="form-actions">
                                 <button type="button" className="btn-secondary" onClick={() => setShowResetPasswordModal(false)}>取消</button>
                                 <button type="submit" className="btn-primary">确认重置</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* 批量添加弹窗 */}
+            {showBatchModal && (
+                <div className="modal-overlay" onClick={() => setShowBatchModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+                        <h2>📋 批量添加员工</h2>
+                        <form onSubmit={handleBatchSubmit}>
+                            <div className="form-group">
+                                <label>员工姓名（每行一个，或用空格/Tab分隔）*</label>
+                                <textarea
+                                    value={batchFormData.namesInput}
+                                    onChange={e => {
+                                        const value = e.target.value
+                                        setBatchFormData({ ...batchFormData, namesInput: value })
+                                        parseNamesAndUpdatePreview(value, batchFormData.emailSuffix)
+                                    }}
+                                    required
+                                    rows={5}
+                                    placeholder="赵二&#10;张三&#10;李四&#10;王五"
+                                    style={{ width: '100%', resize: 'vertical' }}
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>邮箱后缀 *</label>
+                                <input
+                                    type="text"
+                                    value={batchFormData.emailSuffix}
+                                    onChange={e => {
+                                        const value = e.target.value
+                                        setBatchFormData({ ...batchFormData, emailSuffix: value })
+                                        parseNamesAndUpdatePreview(batchFormData.namesInput, value)
+                                    }}
+                                    required
+                                    placeholder="@company.com"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>统一密码 *</label>
+                                <input
+                                    type="password"
+                                    value={batchFormData.password}
+                                    onChange={e => setBatchFormData({ ...batchFormData, password: e.target.value })}
+                                    required
+                                    minLength={6}
+                                    placeholder="至少6位，所有新员工使用此密码"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>所属子公司 *</label>
+                                <select
+                                    value={batchFormData.branch_id}
+                                    onChange={e => setBatchFormData({ ...batchFormData, branch_id: e.target.value, group_id: '' })}
+                                    required
+                                >
+                                    <option value="">请选择子公司</option>
+                                    {branches.map(b => (
+                                        <option key={b.id} value={b.id}>{b.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label>所属小组 *</label>
+                                <select
+                                    value={batchFormData.group_id}
+                                    onChange={e => setBatchFormData({ ...batchFormData, group_id: e.target.value })}
+                                    disabled={!batchFormData.branch_id}
+                                    required
+                                >
+                                    <option value="">请选择小组</option>
+                                    {batchFormGroups.map(g => (
+                                        <option key={g.id} value={g.id}>{g.name}</option>
+                                    ))}
+                                </select>
+                                {!batchFormData.branch_id && (
+                                    <small style={{ color: 'rgba(255,255,255,0.5)', marginTop: '0.25rem', display: 'block' }}>
+                                        请先选择子公司
+                                    </small>
+                                )}
+                            </div>
+
+                            {/* 预览列表 */}
+                            {batchPreviewList.length > 0 && (
+                                <div className="form-group">
+                                    <label>预览（共 {batchPreviewList.length} 人）</label>
+                                    <div style={{
+                                        maxHeight: '200px',
+                                        overflowY: 'auto',
+                                        background: 'rgba(255,255,255,0.05)',
+                                        borderRadius: '8px',
+                                        padding: '0.5rem'
+                                    }}>
+                                        <table style={{ width: '100%', fontSize: '0.9rem' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                                    <th style={{ textAlign: 'left', padding: '0.25rem 0.5rem' }}>姓名</th>
+                                                    <th style={{ textAlign: 'left', padding: '0.25rem 0.5rem' }}>邮箱</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {batchPreviewList.map((item, index) => (
+                                                    <tr key={index} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                                        <td style={{ padding: '0.25rem 0.5rem' }}>{item.name}</td>
+                                                        <td style={{ padding: '0.25rem 0.5rem', color: 'rgba(255,255,255,0.7)' }}>{item.email}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="form-actions">
+                                <button type="button" className="btn-secondary" onClick={() => setShowBatchModal(false)}>取消</button>
+                                <button type="submit" className="btn-primary" disabled={batchSaving || batchPreviewList.length === 0}>
+                                    {batchSaving ? '添加中...' : `添加 ${batchPreviewList.length} 人`}
+                                </button>
                             </div>
                         </form>
                     </div>
