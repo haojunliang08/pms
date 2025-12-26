@@ -67,53 +67,107 @@ export default function ImportData() {
         setRecentImports(importsRes.data || [])
     }
 
-    // 处理导入数据（通用）
+    // 处理导入数据（通用）- 批量插入，失败回滚
     async function processImport(rows: ExcelRow[]) {
         const nameToUser = new Map(users.filter(u => u.branch_id === selectedBranch).map(u => [u.name, u]))
 
-        let success = 0, failed = 0
         const errors: string[] = []
-        const batchMap = new Map<string, { user_id: string; inspection_date: string; topic: string; batch_name: string; inspected_count: number; error_count: number }>()
+        const batchMap = new Map<string, {
+            user_id: string;
+            user_name: string;
+            inspection_date: string;
+            topic: string;
+            batch_name: string;
+            inspected_count: number;
+            error_count: number;
+            row_numbers: number[];
+        }>()
 
-        for (const row of rows) {
+        // 第一阶段：解析和预处理数据，记录所有错误
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i]
+            const rowNum = i + 1
+
+            // 跳过空行
+            if (!row.日期 && !row.标注人员姓名) continue
+
             const user = nameToUser.get(row.标注人员姓名)
-            if (!user) { errors.push(`找不到员工: ${row.标注人员姓名}`); failed++; continue }
+            if (!user) {
+                errors.push(`第${rowNum}行: 找不到员工「${row.标注人员姓名}」`)
+                continue
+            }
+
             const date = parseDate(row.日期)
-            if (!date) { errors.push(`日期格式错误: ${row.日期}`); failed++; continue }
+            if (!date) {
+                errors.push(`第${rowNum}行: 日期格式错误「${row.日期}」`)
+                continue
+            }
+
+            const inspectedCount = Number(row.被质检题目数量) || 0
+            const errorCount = Number(row.错误题目数量) || 0
+            if (inspectedCount < 0 || errorCount < 0) {
+                errors.push(`第${rowNum}行: 质检数或错误数不能为负数`)
+                continue
+            }
+            if (errorCount > inspectedCount) {
+                errors.push(`第${rowNum}行: 错误数(${errorCount})不能大于质检数(${inspectedCount})`)
+                continue
+            }
 
             const key = `${user.id}-${date}-${row.批次名称}`
             if (batchMap.has(key)) {
                 const existing = batchMap.get(key)!
-                existing.inspected_count += Number(row.被质检题目数量) || 0
-                existing.error_count += Number(row.错误题目数量) || 0
+                existing.inspected_count += inspectedCount
+                existing.error_count += errorCount
+                existing.row_numbers.push(rowNum)
             } else {
-                batchMap.set(key, { user_id: user.id, inspection_date: date, topic: row.所属topic, batch_name: row.批次名称, inspected_count: Number(row.被质检题目数量) || 0, error_count: Number(row.错误题目数量) || 0 })
+                batchMap.set(key, {
+                    user_id: user.id,
+                    user_name: user.name,
+                    inspection_date: date,
+                    topic: row.所属topic,
+                    batch_name: row.批次名称,
+                    inspected_count: inspectedCount,
+                    error_count: errorCount,
+                    row_numbers: [rowNum]
+                })
             }
         }
 
-        // 批量插入 - 分批提交，每批最多500条
-        const BATCH_SIZE = 500
-        const dataToInsert = Array.from(batchMap.values()).map(data => ({
+        // 如果有前置验证错误，直接返回，不执行任何插入（回滚）
+        if (errors.length > 0) {
+            return {
+                success: 0,
+                failed: errors.length,
+                errors: [`⚠️ 数据验证失败，未插入任何数据，请修正以下问题后重新导入：`, ...errors.slice(0, 20)]
+            }
+        }
+
+        // 第二阶段：批量插入数据库
+        const dataToInsert = Array.from(batchMap.values()).map(({ user_name, row_numbers, ...data }) => ({
             ...data,
             branch_id: selectedBranch
         }))
 
-        // 分批处理
-        for (let i = 0; i < dataToInsert.length; i += BATCH_SIZE) {
-            const batch = dataToInsert.slice(i, i + BATCH_SIZE)
-            const { error } = await supabase
-                .from('quality_inspections')
-                .upsert(batch, { onConflict: 'user_id,inspection_date,batch_name' })
+        if (dataToInsert.length === 0) {
+            return { success: 0, failed: 0, errors: ['没有有效数据可导入'] }
+        }
 
-            if (error) {
-                errors.push(`批次 ${Math.floor(i / BATCH_SIZE) + 1} 导入失败: ${error.message}`)
-                failed += batch.length
-            } else {
-                success += batch.length
+        // 批量插入
+        const { error } = await supabase
+            .from('quality_inspections')
+            .upsert(dataToInsert, { onConflict: 'user_id,inspection_date,batch_name' })
+
+        if (error) {
+            // 批量插入失败，全部回滚
+            return {
+                success: 0,
+                failed: dataToInsert.length,
+                errors: [`❌ 批量插入失败，已回滚所有数据: ${error.message}`]
             }
         }
 
-        return { success, failed, errors: errors.slice(0, 10) }
+        return { success: dataToInsert.length, failed: 0, errors: [] }
     }
 
     // 处理文件上传
