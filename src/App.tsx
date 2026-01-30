@@ -325,8 +325,10 @@ function App() {
           BrowserRouter 启用客户端路由
           使用 HTML5 History API，URL 看起来像普通 URL
           如：/dashboard，而不是 /#/dashboard
+          
+          basename 设置为 /pms，因为应用部署在 /pms/ 子路径下
         */}
-        <BrowserRouter>
+        <BrowserRouter basename="/pms">
           {/* 路由规则配置 */}
           <AppRoutes />
         </BrowserRouter>
