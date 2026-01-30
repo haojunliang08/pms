@@ -1,0 +1,29 @@
+# 依赖目录（构建时会重新 npm ci）
+node_modules
+
+# 本地构建产物
+dist
+
+# 开发相关
+.git
+.gitignore
+.vscode
+.idea
+*.md
+
+# 敏感文件（不能打包进镜像！）
+.env
+.env.*
+*.local
+
+# 日志
+*.log
+logs
+
+# 其他
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
